@@ -3,6 +3,10 @@ import { v } from "convex/values";
 import { mutation, MutationCtx } from "./_generated/server";
 import { authz } from "./authz";
 
+/**
+ * Return the authenticated user after checking the devices:bind permission.
+ * @throws If authentication, permission, or the user's database record is missing.
+ */
 async function requireBinder(ctx: MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error("Unauthenticated");
@@ -16,6 +20,10 @@ async function requireBinder(ctx: MutationCtx) {
   return actor;
 }
 
+/**
+ * Look up a device by its serial number.
+ * @throws If no device has the supplied serial number.
+ */
 async function getDevice(ctx: MutationCtx, serialNumber: string) {
   const device = await ctx.db
     .query("devices")
@@ -25,6 +33,11 @@ async function getDevice(ctx: MutationCtx, serialNumber: string) {
   return device;
 }
 
+/**
+ * Bind an active device to an active user who has no terminal, requiring
+ * devices:bind permission. Record the actor and time when the binding changes.
+ * Return the device ID; an existing binding to the same user is a no-op.
+ */
 export const bindDevice = mutation({
   args: { serialNumber: v.string(), userId: v.id("users") },
   handler: async (ctx, args) => {
@@ -61,6 +74,10 @@ export const bindDevice = mutation({
   },
 });
 
+/**
+ * Remove a device's assignment with devices:bind permission and record the
+ * actor and time. Return the device ID; an unassigned device is a no-op.
+ */
 export const unbindDevice = mutation({
   args: { serialNumber: v.string() },
   handler: async (ctx, args) => {

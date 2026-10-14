@@ -276,6 +276,7 @@ export const listAgents = query({
   },
 });
 
+/** Return the device fleet with assignee and last binding actor names for an authorized viewer. */
 export const listDevices = query({
   args: {},
   handler: async (ctx) => {

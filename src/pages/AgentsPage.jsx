@@ -27,7 +27,7 @@ function SyncTag({ d }) {
   return <span className="tag actif">À jour</span>
 }
 
-// Bind / unbind a TPE to an agent. Requires the devices:bind permission (it_admin).
+/** Render TPE assignment controls and audit details; mutations enforce devices:bind permission. */
 function BindCell({ device, agents }) {
   const bind   = useMutation(api.devices.bindDevice)
   const unbind = useMutation(api.devices.unbindDevice)
@@ -35,6 +35,7 @@ function BindCell({ device, agents }) {
   const [busy, setBusy]     = useState(false)
   const [error, setError]   = useState(null)
 
+  /** Run a binding operation, manage pending/error state, and clear selection on success. */
   const run = async (fn) => {
     setBusy(true); setError(null)
     try { await fn(); setUserId("") }
@@ -42,6 +43,7 @@ function BindCell({ device, agents }) {
     finally { setBusy(false) }
   }
 
+  /** Ask for confirmation before removing the displayed device's assignment. */
   const onUnbind = () => {
     if (window.confirm(`Délier ${device.serial} de ${device.assignee} ? L'agent ne pourra plus encaisser avec ce TPE.`)) {
       run(() => unbind({ serialNumber: device.serial }))
@@ -80,6 +82,7 @@ function BindCell({ device, agents }) {
   )
 }
 
+/** Render agent filters, collection summaries, and the terminal fleet with binding controls. */
 export default function AgentsPage() {
   const [q, setQ] = useState("")
   const [branch, setBranch] = useState("toutes")
