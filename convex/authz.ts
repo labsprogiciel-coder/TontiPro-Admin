@@ -35,9 +35,15 @@ const permissions = definePermissions({
 
 // Step 2: Define Roles with Inheritance
 const roles = defineRoles(permissions, {
+  // Core field permissions shared by every collecting role
+  base_agent: {
+    transactions: ["collect", "view_ledger"],
+    kyc: ["register"],
+  },
+
   // Field-based role
   field_agent: {
-    includes: ["base_agent"], //
+    includes: ["base_agent"],
     customers: ["create_prospect"],
     disbursements: ["request"],
   },
