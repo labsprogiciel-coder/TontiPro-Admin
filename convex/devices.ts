@@ -1,0 +1,78 @@
+// convex/devices.ts — TPE ↔ agent binding (it_admin only, via devices:bind)
+import { v } from "convex/values";
+import { mutation, MutationCtx } from "./_generated/server";
+import { authz } from "./authz";
+
+async function requireBinder(ctx: MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Unauthenticated");
+  await authz.require(ctx, identity.subject, "devices:bind");
+
+  const actor = await ctx.db
+    .query("users")
+    .withIndex("by_token", (q) => q.eq("tokenIdentifier", identity.subject))
+    .unique();
+  if (!actor) throw new Error("User not found");
+  return actor;
+}
+
+async function getDevice(ctx: MutationCtx, serialNumber: string) {
+  const device = await ctx.db
+    .query("devices")
+    .withIndex("by_serial", (q) => q.eq("serialNumber", serialNumber))
+    .unique();
+  if (!device) throw new Error("Device not found");
+  return device;
+}
+
+export const bindDevice = mutation({
+  args: { serialNumber: v.string(), userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const actor = await requireBinder(ctx);
+    const device = await getDevice(ctx, args.serialNumber);
+
+    if (device.status !== "active") {
+      throw new Error(`Device is ${device.status}; only active devices can be bound`);
+    }
+    if (device.assignedTo === args.userId) return device._id;
+    if (device.assignedTo) {
+      throw new Error("Device is already bound to another agent; unbind it first");
+    }
+
+    const agent = await ctx.db.get(args.userId);
+    if (!agent) throw new Error("Agent not found");
+    if (agent.status !== "active") throw new Error("Agent is suspended");
+
+    // One terminal per agent, so every collection traces to a single device
+    const existing = await ctx.db
+      .query("devices")
+      .withIndex("by_assignee", (q) => q.eq("assignedTo", args.userId))
+      .first();
+    if (existing) {
+      throw new Error(`Agent already has ${existing.serialNumber}; unbind it first`);
+    }
+
+    await ctx.db.patch(device._id, {
+      assignedTo: args.userId,
+      boundBy: actor._id,
+      boundAt: Date.now(),
+    });
+    return device._id;
+  },
+});
+
+export const unbindDevice = mutation({
+  args: { serialNumber: v.string() },
+  handler: async (ctx, args) => {
+    const actor = await requireBinder(ctx);
+    const device = await getDevice(ctx, args.serialNumber);
+    if (!device.assignedTo) return device._id;
+
+    await ctx.db.patch(device._id, {
+      assignedTo: undefined,
+      boundBy: actor._id,
+      boundAt: Date.now(),
+    });
+    return device._id;
+  },
+});

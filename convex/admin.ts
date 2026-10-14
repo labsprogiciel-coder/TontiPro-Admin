@@ -280,13 +280,20 @@ export const listDevices = query({
   args: {},
   handler: async (ctx) => {
     await requireViewer(ctx);
-    const devices = await ctx.db.query("devices").collect();
+    const [devices, users] = await Promise.all([
+      ctx.db.query("devices").collect(),
+      ctx.db.query("users").collect(),
+    ]);
+    const usersById = byId(users);
     return devices.map((d) => ({
       serial: d.serialNumber,
       model: d.model,
       status: d.status,
       lastSync: d.lastSync,
-      assigned: !!d.assignedTo,
+      assignedTo: d.assignedTo ?? null,
+      assignee: d.assignedTo ? usersById.get(d.assignedTo)?.fullName ?? "—" : null,
+      boundBy: d.boundBy ? usersById.get(d.boundBy)?.fullName ?? "—" : null,
+      boundAt: d.boundAt ?? null,
     }));
   },
 });
