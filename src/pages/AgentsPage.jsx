@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from 'convex/react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { fmt, initials, relTime, Loading, PageHeader } from '../components'
@@ -27,6 +27,62 @@ function SyncTag({ d }) {
   return <span className="tag actif">À jour</span>
 }
 
+/** Render TPE assignment controls and audit details; mutations enforce devices:bind permission. */
+function BindCell({ device, agents }) {
+  const bind   = useMutation(api.devices.bindDevice)
+  const unbind = useMutation(api.devices.unbindDevice)
+  const [userId, setUserId] = useState("")
+  const [busy, setBusy]     = useState(false)
+  const [error, setError]   = useState(null)
+
+  /** Run a binding operation, manage pending/error state, and clear selection on success. */
+  const run = async (fn) => {
+    setBusy(true); setError(null)
+    try { await fn(); setUserId("") }
+    catch (e) { setError(e.data ?? e.message) }
+    finally { setBusy(false) }
+  }
+
+  /** Ask for confirmation before removing the displayed device's assignment. */
+  const onUnbind = () => {
+    if (window.confirm(`Délier ${device.serial} de ${device.assignee} ? L'agent ne pourra plus encaisser avec ce TPE.`)) {
+      run(() => unbind({ serialNumber: device.serial }))
+    }
+  }
+
+  // Only active agents without a terminal can receive one
+  const eligible = agents.filter(a => a.status === "active" && !a.device)
+
+  return (
+    <div>
+      {device.assignedTo ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontWeight: 550 }}>{device.assignee}</span>
+          <button className="btn ghost sm" style={{ color: "var(--neg)" }} disabled={busy} onClick={onUnbind}>Délier</button>
+        </div>
+      ) : device.status !== "active" ? (
+        <span className="cell-sub">Non affecté · appareil indisponible</span>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <select className="filter-select" value={userId} onChange={e => setUserId(e.target.value)} disabled={busy}>
+            <option value="">{eligible.length ? "Choisir un agent…" : "Aucun agent disponible"}</option>
+            {eligible.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+          <button className="btn sm" disabled={busy || !userId}
+            onClick={() => run(() => bind({ serialNumber: device.serial, userId }))}>Lier</button>
+        </div>
+      )}
+      {device.boundBy && (
+        <div className="cell-sub" style={{ marginTop: 2 }}>
+          {device.assignedTo ? "Lié" : "Délié"} par {device.boundBy} · {relTime(device.boundAt)}
+        </div>
+      )}
+      {error && <div style={{ color: "var(--neg)", fontSize: 11.5, marginTop: 4 }}>{String(error)}</div>}
+    </div>
+  )
+}
+
+/** Render agent filters, collection summaries, and the terminal fleet with binding controls. */
 export default function AgentsPage() {
   const [q, setQ] = useState("")
   const [branch, setBranch] = useState("toutes")
@@ -254,19 +310,19 @@ export default function AgentsPage() {
       <div className="card">
         <div className="card-head">
           <div className="card-title">Parc de terminaux</div>
-          <span className="card-sub" style={{ marginLeft: "auto" }}>{fleet.length} TPE enregistrés</span>
+          <span className="card-sub" style={{ marginLeft: "auto" }}>{fleet.length} TPE enregistrés · liaison réservée à l'Admin IT</span>
         </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté</th><th>Statut</th><th>Dernière sync</th></tr>
+              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Dernière sync</th></tr>
             </thead>
             <tbody>
               {fleet.map(d => (
                 <tr key={d.serial}>
                   <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 550 }}>{d.serial}</td>
                   <td>{d.model}</td>
-                  <td className="cell-sub">{d.assigned ? "Oui" : "Non affecté"}</td>
+                  <td><BindCell device={d} agents={AGENTS}/></td>
                   <td><SyncTag d={d}/></td>
                   <td className="cell-sub">{relTime(d.lastSync)}</td>
                 </tr>

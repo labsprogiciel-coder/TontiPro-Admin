@@ -56,9 +56,13 @@ export default defineSchema({
     serialNumber: v.string(), // Hardcoded TPE Serial
     model: v.string(),
     assignedTo: v.optional(v.id("users")),
+    boundBy: v.optional(v.id("users")), // Last it_admin to bind/unbind
+    boundAt: v.optional(v.number()),
     status: v.union(v.literal("active"), v.literal("maintenance"), v.literal("lost")),
     lastSync: v.number(),
-  }).index("by_serial", ["serialNumber"]),
+  })
+    .index("by_serial", ["serialNumber"])
+    .index("by_assignee", ["assignedTo"]),
 
   // 5. CASH COLLECTIONS (Transactions)
   transactions: defineTable({
