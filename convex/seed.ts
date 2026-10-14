@@ -1,5 +1,6 @@
 // convex/seed.ts — dev-only mock data
 import { internalMutation } from "./_generated/server";
+import { authz } from "./authz";
 
 export const seedDatabase = internalMutation({
   args: {},
@@ -32,7 +33,6 @@ export const seedDatabase = internalMutation({
       fullName: "Aminata Ouédraogo",
       email: "aminata.ouedraogo@kauri.bf",
       phoneNumber: "+22670112233",
-      tokenIdentifier: "clerk|supervisor_001",
       branchId: branchOuaga,
       status: "active",
     });
@@ -40,7 +40,6 @@ export const seedDatabase = internalMutation({
       fullName: "Seydou Compaoré",
       email: "seydou.compaore@kauri.bf",
       phoneNumber: "+22676445566",
-      tokenIdentifier: "clerk|agent_001",
       branchId: branchOuaga,
       status: "active",
     });
@@ -48,7 +47,6 @@ export const seedDatabase = internalMutation({
       fullName: "Mariam Traoré",
       email: "mariam.traore@kauri.bf",
       phoneNumber: "+22678990011",
-      tokenIdentifier: "clerk|agent_002",
       branchId: branchOuaga,
       status: "active",
     });
@@ -56,7 +54,6 @@ export const seedDatabase = internalMutation({
       fullName: "Ibrahim Sawadogo",
       email: "ibrahim.sawadogo@kauri.bf",
       phoneNumber: "+22665223344",
-      tokenIdentifier: "clerk|accountant_001",
       branchId: branchOuaga,
       status: "active",
     });
@@ -64,10 +61,25 @@ export const seedDatabase = internalMutation({
       fullName: "Fatimata Coulibaly",
       email: "fatimata.coulibaly@kauri.bf",
       phoneNumber: "+22671556677",
-      tokenIdentifier: "clerk|agent_003",
       branchId: branchBobo,
       status: "active",
     });
+
+    const itAdmin = await ctx.db.insert("users", {
+      fullName: "Oumar Zida",
+      email: "oumar.zida@kauri.bf",
+      phoneNumber: "+22665440011",
+      branchId: branchOuaga,
+      status: "active",
+    });
+
+    // ── Roles (authz user IDs are users._id) ─────────────────────────────────
+    await authz.assignRole(ctx, supervisor, "supervisor");
+    await authz.assignRole(ctx, agent1, "field_agent");
+    await authz.assignRole(ctx, agent2, "field_agent");
+    await authz.assignRole(ctx, agentBobo, "field_agent");
+    await authz.assignRole(ctx, accountant, "accountant");
+    await authz.assignRole(ctx, itAdmin, "it_admin");
 
     // ── Devices ──────────────────────────────────────────────────────────────
     const tpe1 = await ctx.db.insert("devices", {
@@ -247,7 +259,7 @@ export const seedDatabase = internalMutation({
     return {
       organization: org,
       branches: [branchOuaga, branchBobo],
-      users: [supervisor, agent1, agent2, accountant, agentBobo],
+      users: [supervisor, agent1, agent2, accountant, agentBobo, itAdmin],
       customers: [customer1, customer2, customer3, customer4, customer5],
     };
   },

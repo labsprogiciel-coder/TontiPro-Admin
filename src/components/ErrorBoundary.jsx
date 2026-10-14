@@ -18,7 +18,7 @@ export default class ErrorBoundary extends Component {
         </div>
         <div style={{ color: "var(--ink-3)", fontSize: 13, marginBottom: 16 }}>
           {unauth
-            ? "Le serveur Convex refuse les lectures anonymes. Configurez l'authentification ou activez ADMIN_ALLOW_ANONYMOUS sur un déploiement de développement."
+            ? "Votre session a expiré ou votre compte est suspendu. Reconnectez-vous."
             : error.message}
         </div>
         <button className="btn" onClick={() => this.setState({ error: null })}>Réessayer</button>

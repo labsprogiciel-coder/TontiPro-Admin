@@ -1,8 +1,15 @@
 // convex/schema.ts
+import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+// Convex Auth tables (sessions, accounts, tokens…). Its default `users`
+// table is replaced by the staff table below, which auth links to by email.
+const { users: _authUsers, ...authOnlyTables } = authTables;
+
 export default defineSchema({
+  ...authOnlyTables,
+
   // 1. ORGANIZATIONAL STRUCTURE
 
   // Top-level tenant — one MFI licence = one organization
@@ -29,10 +36,13 @@ export default defineSchema({
     fullName: v.string(),
     email: v.string(),
     phoneNumber: v.string(),
-    tokenIdentifier: v.string(), // Clerk/Auth0 ID
+    tokenIdentifier: v.optional(v.string()), // Legacy external-auth ID, unused
     branchId: v.id("branches"),
     status: v.union(v.literal("active"), v.literal("suspended")),
-  }).index("by_token", ["tokenIdentifier"]),
+    // One-time code an administrator issues for "Première connexion"
+    activationCodeHash: v.optional(v.string()),
+    activationExpiresAt: v.optional(v.number()),
+  }).index("email", ["email"]), // Name required by Convex Auth
 
   // 3. KYC & CUSTOMERS
   customers: defineTable({

@@ -2,21 +2,15 @@
 import { v } from "convex/values";
 import { mutation, MutationCtx } from "./_generated/server";
 import { authz } from "./authz";
+import { requireUser } from "./users";
 
 /**
  * Return the authenticated user after checking the devices:bind permission.
  * @throws If authentication, permission, or the user's database record is missing.
  */
 async function requireBinder(ctx: MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Unauthenticated");
-  await authz.require(ctx, identity.subject, "devices:bind");
-
-  const actor = await ctx.db
-    .query("users")
-    .withIndex("by_token", (q) => q.eq("tokenIdentifier", identity.subject))
-    .unique();
-  if (!actor) throw new Error("User not found");
+  const actor = await requireUser(ctx);
+  await authz.require(ctx, actor._id, "devices:bind");
   return actor;
 }
 
@@ -56,7 +50,7 @@ export const bindDevice = mutation({
     if (!agent) throw new Error("Agent not found");
     if (agent.status !== "active") throw new Error("Agent is suspended");
     // Only collecting roles (field_agent, supervisor) need a terminal
-    if (!(await authz.can(ctx, agent.tokenIdentifier, "transactions:collect"))) {
+    if (!(await authz.can(ctx, agent._id, "transactions:collect"))) {
       throw new Error("Only field agents and supervisors can be bound to a TPE");
     }
 

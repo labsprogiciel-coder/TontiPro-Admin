@@ -1,4 +1,7 @@
 import { useState, useMemo } from 'react'
+import { useQuery } from 'convex/react'
+import { useAuthActions } from '@convex-dev/auth/react'
+import { api } from '../convex/_generated/api'
 import { openCommandPalette } from './components/CommandPalette'
 import { I } from './icons'
 
@@ -102,7 +105,16 @@ export function Sparkline({ data, color = "var(--brand)" }) {
   )
 }
 
+const ROLE_LABELS = {
+  field_agent: "Agent terrain",
+  supervisor:  "Superviseur",
+  accountant:  "Comptable",
+  it_admin:    "Admin IT",
+}
+
 export function Sidebar({ active, setActive }) {
+  const me = useQuery(api.users.me)
+  const { signOut } = useAuthActions()
   const items = [
     { group: "Principal", entries: [
       { id: "dashboard", label: "Tableau de bord", icon: <I.Grid /> },
@@ -145,12 +157,14 @@ export function Sidebar({ active, setActive }) {
         </div>
       ))}
       <div className="sidebar-foot">
-        <div className="avatar">KD</div>
+        <div className="avatar">{me ? initials(me.name) : "…"}</div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="user-name">Konaté Djibril</div>
-          <div className="user-role">Administrateur · Bobo-D.</div>
+          <div className="user-name">{me?.name ?? "…"}</div>
+          <div className="user-role">
+            {[me?.roles?.map(r => ROLE_LABELS[r] ?? r).join(", ") || "Aucun rôle", me?.branch].filter(Boolean).join(" · ")}
+          </div>
         </div>
-        <button className="btn ghost sm" title="Notifications" style={{ padding: "5px" }}><I.Bell size={14}/></button>
+        <button className="btn ghost sm" title="Se déconnecter" style={{ padding: "5px" }} onClick={() => signOut()}><I.Logout size={14}/></button>
       </div>
     </aside>
   )
