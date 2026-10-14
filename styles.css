@@ -417,9 +417,9 @@ a { color: inherit; text-decoration: none; }
   font-size: 13px;
 }
 .search:focus-within { border-color: var(--ink-3); background: var(--surface); }
-.search input { border: none; background: transparent; outline: none; flex: 1; color: var(--ink); }
+.search input { border: none; background: transparent; outline: none; flex: 1; min-width: 0; color: var(--ink); }
 .search input::placeholder { color: var(--ink-4); }
-.search svg { width: 14px; height: 14px; }
+.search svg { width: 14px; height: 14px; flex-shrink: 0; }
 
 /* === Client list === */
 .clients-list { padding: 4px 8px 8px; }

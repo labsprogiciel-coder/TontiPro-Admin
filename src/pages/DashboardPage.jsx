@@ -13,14 +13,13 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const [online, setOnline] = useState(true)
   const data = useQuery(api.admin.dashboard)
 
   const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
 
   return (
     <>
-      <Topbar online={online} setOnline={setOnline} inbox={<Novu />} />
+      <Topbar inbox={<Novu />} />
       <h1 className="h1">{greeting()}</h1>
       <div className="h1-sub mb-6" style={{ textTransform: "capitalize" }}>
         {today}{data && ` · ${data.branchCount} agences · ${data.agentCount} utilisateurs`}

@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { fmt, initials, relTime, Loading, PageHeader } from '../components'
+import { errorMessage, fmt, initials, relTime, Loading, PageHeader, SearchInput } from '../components'
 import Novu from '../components/Inbox'
+import { NewStaffDrawer, StaffDrawer } from '../components/StaffDrawers'
 
 const ROLE_TAGS = {
   "Admin IT":      { bg: "oklch(0.94 0.04 50)",  fg: "var(--brand-ink)" },
@@ -28,7 +29,7 @@ function SyncTag({ d }) {
 }
 
 /** Render TPE assignment controls and audit details; mutations enforce devices:bind permission. */
-function BindCell({ device, agents }) {
+function BindCell({ device, agents, canBind }) {
   const bind   = useMutation(api.devices.bindDevice)
   const unbind = useMutation(api.devices.unbindDevice)
   const [userId, setUserId] = useState("")
@@ -39,7 +40,7 @@ function BindCell({ device, agents }) {
   const run = async (fn) => {
     setBusy(true); setError(null)
     try { await fn(); setUserId("") }
-    catch (e) { setError(e.data ?? e.message) }
+    catch (e) { setError(errorMessage(e)) }
     finally { setBusy(false) }
   }
 
@@ -52,6 +53,12 @@ function BindCell({ device, agents }) {
 
   // Mirrors bindDevice: active field agents / supervisors without a terminal
   const eligible = agents.filter(a => a.status === "active" && a.canCollect && !a.device)
+
+  if (!canBind) {
+    return device.assignedTo
+      ? <span style={{ fontWeight: 550 }}>{device.assignee}</span>
+      : <span className="cell-sub">Non affecté</span>
+  }
 
   return (
     <div>
@@ -87,7 +94,10 @@ export default function AgentsPage() {
   const [q, setQ] = useState("")
   const [branch, setBranch] = useState("toutes")
   const [role, setRole] = useState("tous")
-  const [online, setOnline] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [staffId, setStaffId]   = useState(null)
+  const me  = useQuery(api.users.me)
+  const can = me?.can ?? {}
 
   const rows = useQuery(api.admin.listAgents)
   const devices = useQuery(api.admin.listDevices)
@@ -123,14 +133,13 @@ export default function AgentsPage() {
         title="Agents & terminaux"
         sub={`${AGENTS.length} agents · ${fleet.length} TPE · ${branches.length - 1} agences`}
       >
-        <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
-          <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
-        </button>
         <Novu />
       </PageHeader>
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <button className="btn"><I.Cloud size={14}/>Forcer sync</button>
-        <button className="btn brand"><I.Plus size={14} stroke="white"/>Nouvel agent</button>
+        <SearchInput placeholder="Nom, téléphone, TPE…" value={q} onChange={e => setQ(e.target.value)} />
+        {can.manageStaff && (
+          <button className="btn brand" onClick={() => setCreating(true)}><I.Plus size={14} stroke="white"/>Nouvel agent</button>
+        )}
       </div>
       <section className="kpi-row">
         {AGENT_KPIS.map(k => (
@@ -231,7 +240,14 @@ export default function AgentsPage() {
                         {STATUS_LABEL[a.status]}
                       </span>
                     </td>
-                    <td><button className="btn ghost sm" style={{ padding: 4 }}><I.More size={14}/></button></td>
+                    <td>
+                      {can.manageStaff && (
+                        <button className="btn ghost sm" style={{ padding: 4 }} title="Gérer le compte"
+                          aria-label={`Gérer le compte de ${a.name}`} onClick={() => setStaffId(a.id)}>
+                          <I.More size={14}/>
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
@@ -275,22 +291,25 @@ export default function AgentsPage() {
         <div className="card">
           <div className="card-head">
             <div className="card-title">Permissions · matrice</div>
-            <span className="card-action" style={{ marginLeft: "auto" }}>Modifier <I.Arrow size={12}/></span>
+            <span className="card-sub" style={{ marginLeft: "auto" }}>Par rôle</span>
           </div>
           <div style={{ padding: "0 14px 14px", overflowX: "auto" }}>
             <table className="perm-table">
               <thead>
-                <tr><th></th><th>Admin</th><th>Superv.</th><th>Agent</th><th>Caisse</th></tr>
+                <tr><th></th><th>Agent</th><th>Superv.</th><th>Compta.</th><th>Admin IT</th></tr>
               </thead>
               <tbody>
+                {/* Mirrors the role definitions in convex/authz.ts */}
                 {[
-                  ["Voir clients",            1,1,1,1],
-                  ["Inscrire (KYC sur TPE)",  1,1,1,0],
-                  ["Encaisser dépôt",         1,1,1,1],
-                  ["Valider retrait",         1,1,0,1],
-                  ["Mode hors-ligne",         1,1,1,1],
-                  ["Modifier objectifs",      1,1,0,0],
-                  ["Gérer agents & TPE",      1,0,0,0],
+                  ["Encaisser (TPE)",            1,1,0,0],
+                  ["Inscrire un client",         1,1,0,0],
+                  ["Demander un décaissement",   1,1,0,0],
+                  ["Annuler une transaction",    0,1,0,0],
+                  ["Approuver un décaissement",  0,1,0,0],
+                  ["Vérifier l'identité client", 0,1,1,0],
+                  ["Clôturer la caisse",         0,0,1,0],
+                  ["Lier les TPE",               0,0,0,1],
+                  ["Gérer le personnel",         0,0,0,1],
                 ].map(([label, ...vals]) => (
                   <tr key={label}>
                     <td>{label}</td>
@@ -322,7 +341,7 @@ export default function AgentsPage() {
                 <tr key={d.serial}>
                   <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 550 }}>{d.serial}</td>
                   <td>{d.model}</td>
-                  <td><BindCell device={d} agents={AGENTS}/></td>
+                  <td><BindCell device={d} agents={AGENTS} canBind={!!can.bind}/></td>
                   <td><SyncTag d={d}/></td>
                   <td className="cell-sub">{relTime(d.lastSync)}</td>
                 </tr>
@@ -332,6 +351,11 @@ export default function AgentsPage() {
           {devices === undefined && <Loading />}
         </div>
       </div>
+      {creating && (
+        <NewStaffDrawer onClose={() => setCreating(false)}
+          onCreated={(id) => { setCreating(false); setStaffId(id) }} />
+      )}
+      {staffId && <StaffDrawer key={staffId} userId={staffId} onClose={() => setStaffId(null)} />}
     </div>
   )
 }

@@ -22,6 +22,8 @@ export default function AppCommandPalette({ setActive }) {
           { id: "clients",   children: "Clients",          icon: "UsersIcon",             onClick: () => setActive("clients") },
           { id: "tx",        children: "Transactions",     icon: "CreditCardIcon",        onClick: () => setActive("tx") },
           { id: "objectifs", children: "Objectifs",        icon: "FlagIcon",              onClick: () => setActive("objectifs") },
+          { id: "produits",  children: "Produits",         icon: "CubeIcon",              onClick: () => setActive("produits") },
+          { id: "reconciliation", children: "Réconciliation", icon: "CalculatorIcon",       onClick: () => setActive("reconciliation") },
           { id: "agents",    children: "Agents & TPE",     icon: "DevicePhoneMobileIcon", onClick: () => setActive("agents") },
           { id: "settings",  children: "Paramètres",       icon: "CogIcon",               onClick: () => setActive("settings") },
         ],

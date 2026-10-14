@@ -255,6 +255,7 @@ export const listAgents = query({
           email: u.email,
           branch: branches.get(u.branchId)?.name ?? "—",
           role: roles.map((r) => ROLE_LABELS[r] ?? r).join(", ") || "—",
+          roleKeys: roles,
           status: u.status,
           canCollect,
           clients: data.customers.filter((c) => c.onboardedBy === u._id).length,

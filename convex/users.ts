@@ -1,10 +1,11 @@
 // convex/users.ts — current staff member, and role administration
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { internalMutation, query, QueryCtx } from "./_generated/server";
+import { Doc } from "./_generated/dataModel";
+import { internalMutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { authz } from "./authz";
 
-const ROLE = v.union(
+export const ROLE = v.union(
   v.literal("field_agent"),
   v.literal("supervisor"),
   v.literal("accountant"),
@@ -38,9 +39,16 @@ export const me = query({
     const user = await ctx.db.get(userId);
     if (!user) return null;
     if (user.status !== "active") return { id: user._id, name: user.fullName, active: false as const };
-    const [branch, roles] = await Promise.all([
+    const can = (permission: Parameters<typeof authz.can>[2]) =>
+      authz.can(ctx, user._id, permission).catch(() => false);
+    const [branch, roles, reverse, approve, liquidate, bind, manageStaff] = await Promise.all([
       ctx.db.get(user.branchId),
       authz.getUserRoles(ctx, user._id).catch(() => []),
+      can("transactions:reverse"),
+      can("disbursements:approve"),
+      can("reconciliation:liquidate"),
+      can("devices:bind"),
+      can("staff:manage"),
     ]);
     return {
       id: user._id,
@@ -49,6 +57,8 @@ export const me = query({
       email: user.email,
       branch: branch?.name ?? null,
       roles: roles.map((r) => r.role),
+      // UI hints only: every mutation re-checks its own permission
+      can: { reverse, approve, liquidate, bind, manageStaff },
     };
   },
 });
@@ -78,15 +88,19 @@ export const issueActivationCode = internalMutation({
       .withIndex("email", (q) => q.eq("email", args.email.trim().toLowerCase()))
       .unique();
     if (!user) throw new Error("No staff account for this email");
-    if (user.status !== "active") throw new Error("Account suspended");
-
-    const bytes = crypto.getRandomValues(new Uint8Array(8));
-    const code = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
-    const expiresAt = Date.now() + ACTIVATION_TTL_MS;
-    await ctx.db.patch(user._id, {
-      activationCodeHash: await hashActivationCode(code),
-      activationExpiresAt: expiresAt,
-    });
-    return { code, expiresAt: new Date(expiresAt).toISOString() };
+    return createActivationCode(ctx, user);
   },
 });
+
+// Shared by the CLI mutation above and staff.issueActivationCode (UI)
+export async function createActivationCode(ctx: MutationCtx, user: Doc<"users">) {
+  if (user.status !== "active") throw new Error("Account suspended");
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  const code = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+  const expiresAt = Date.now() + ACTIVATION_TTL_MS;
+  await ctx.db.patch(user._id, {
+    activationCodeHash: await hashActivationCode(code),
+    activationExpiresAt: expiresAt,
+  });
+  return { code, expiresAt: new Date(expiresAt).toISOString() };
+}

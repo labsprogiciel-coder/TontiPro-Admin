@@ -37,6 +37,41 @@ export function fmtDateTime(ts) {
   return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}, ${time}`
 }
 
+// Server errors → French. ConvexError codes pass through in production; plain
+// Error messages are matched by substring (production redacts those, hence
+// the generic fallback).
+const ERROR_MESSAGES = {
+  SELF_CHANGE:       "Vous ne pouvez pas modifier votre propre compte.",
+  NOT_FOUND:         "Membre du personnel introuvable.",
+  NAME_REQUIRED:     "Le nom est obligatoire.",
+  INVALID_EMAIL:     "Adresse email invalide.",
+  PHONE_REQUIRED:    "Le téléphone est obligatoire.",
+  BRANCH_NOT_FOUND:  "Agence introuvable.",
+  EMAIL_TAKEN:       "Un membre du personnel utilise déjà cet email.",
+  ALREADY_ACTIVATED: "Ce compte est déjà activé.",
+  SUSPENDED:         "Ce compte est suspendu.",
+}
+const ERROR_PATTERNS = [
+  [/Unauthenticated|session/i,                  "Session expirée. Reconnectez-vous."],
+  [/suspended/i,                                 "Compte suspendu."],
+  [/permission|not authorized|forbidden|denied/i, "Vous n'avez pas l'autorisation pour cette action."],
+  [/TPE not bound/i,                             "Ce TPE n'est pas lié à cet agent."],
+  [/Only field agents and supervisors/i,         "Seuls les agents terrain et superviseurs peuvent recevoir un TPE."],
+  [/already bound/i,                             "Ce TPE est déjà lié à un autre agent : déliez-le d'abord."],
+  [/Agent already has/i,                         "Cet agent a déjà un TPE : déliez-le d'abord."],
+  [/only active devices/i,                       "Seuls les TPE actifs peuvent être liés."],
+  [/Already reversed/i,                          "Transaction déjà annulée."],
+  [/daily cash already settled|already reconciled/i, "La caisse du jour est déjà clôturée."],
+  [/No transactions found/i,                     "Aucune collecte aujourd'hui pour cet agent."],
+  [/cannot approve your own/i,                   "Vous ne pouvez pas approuver votre propre demande."],
+]
+export function errorMessage(e) {
+  if (typeof e?.data === "string" && ERROR_MESSAGES[e.data]) return ERROR_MESSAGES[e.data]
+  const text = String(e?.data ?? e?.message ?? "")
+  for (const [re, msg] of ERROR_PATTERNS) if (re.test(text)) return msg
+  return "Une erreur est survenue. Réessayez ou contactez l'Admin IT."
+}
+
 export function Loading({ label = "Chargement…" }) {
   return <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>{label}</div>
 }
@@ -51,10 +86,10 @@ export function SearchInput({ placeholder, value, onChange, width = 240 }) {
 }
 
 // crumbs: string[] — segments after "Kauri", e.g. ["Admin", "Agents & TPE"]
-export function PageHeader({ crumbs = [], title, children }) {
+export function PageHeader({ crumbs = [], title, sub, children }) {
   const allCrumbs = title ? [...crumbs, title] : crumbs
-  const [safemode, setSafeMode] = useState(true)
   return (
+    <>
     <header className="topbar">
       <div className="crumbs">
         <strong>Kauri</strong>
@@ -71,12 +106,11 @@ export function PageHeader({ crumbs = [], title, children }) {
         </button>
       </div>
       <div className="topbar-right">
-        <button className={"safemode-pill" + (safemode ? "" : " off")} onClick={() => setSafeMode(!safemode)}>
-          <span className="safemode-dot"></span>{safemode ? "Safe Mode · actif" : "Safe Mode · inactif"}
-        </button>
         {children}
       </div>
     </header>
+    {sub && <div className="h1-sub" style={{ margin: "-6px 0 14px" }}>{sub}</div>}
+    </>
   )
 }
 
@@ -124,13 +158,8 @@ export function Sidebar({ active, setActive }) {
       { id: "produits",       label: "Produits",        icon: <I.Wallet /> },
       { id: "reconciliation", label: "Réconciliation",  icon: <I.Coin /> },
     ]},
-    { group: "Rapports", entries: [
-      { id: "analyses", label: "Analyses",  icon: <I.Chart /> },
-      { id: "export",   label: "Export CSV", icon: <I.Export /> },
-    ]},
     { group: "Admin", entries: [
       { id: "agents",      label: "Agents",      icon: <I.Users /> },
-      { id: "permissions", label: "Permissions", icon: <I.Shield /> },
       { id: "settings",    label: "Paramètres",  icon: <I.Settings /> },
     ]},
   ]
@@ -170,7 +199,7 @@ export function Sidebar({ active, setActive }) {
   )
 }
 
-export function Topbar({ online, setOnline, inbox }) {
+export function Topbar({ inbox }) {
   return (
     <div className="topbar">
       <div className="crumbs"><strong>Kauri</strong> &nbsp;/&nbsp; Tableau de bord</div>
@@ -180,9 +209,6 @@ export function Topbar({ online, setOnline, inbox }) {
         </button>
       </div>
       <div className="topbar-right">
-        <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
-          <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
-        </button>
         {inbox}
       </div>
     </div>

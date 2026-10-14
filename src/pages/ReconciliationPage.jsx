@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { fmt, initials, Loading, PageHeader } from '../components'
+import { errorMessage, fmt, initials, Loading, PageHeader } from '../components'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -320,6 +320,8 @@ function ReconciliationDetail({ record, onBack, onDone }) {
     ? {}
     : reverseEngineer(record.counted.cash)
   const settle = useMutation(api.reconciliation.settleDailyCash)
+  const me = useQuery(api.users.me)
+  const canSettle = !!me?.can?.liquidate
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState(null)
 
@@ -354,7 +356,7 @@ function ReconciliationDetail({ record, onBack, onDone }) {
       const { reconciliationId } = await settle({ agentId: record.agentId, physicalAmount: totalCounted, notes: notes || undefined })
       onDone(reconciliationId)
     } catch (e) {
-      setError(e.data ?? e.message)
+      setError(errorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -568,11 +570,15 @@ function ReconciliationDetail({ record, onBack, onDone }) {
               ) : (
                 <>
                   {error && <span style={{ fontSize: 12, color: "var(--neg)" }}>{String(error)}</span>}
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                    <button className="btn brand" disabled={busy} onClick={onSettle}>
-                      <I.Check size={14} stroke="white"/>
-                      {variance.total === 0 ? "Clôturer la session" : "Soumettre l'écart"}
-                    </button>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+                    {canSettle ? (
+                      <button className="btn brand" disabled={busy} onClick={onSettle}>
+                        <I.Check size={14} stroke="white"/>
+                        {variance.total === 0 ? "Clôturer la session" : "Soumettre l'écart"}
+                      </button>
+                    ) : (
+                      <span className="cell-sub">Seul un comptable peut clôturer la caisse.</span>
+                    )}
                   </div>
                 </>
               )}

@@ -47,7 +47,6 @@ export default function SettingsPage() {
   const [bgSync, setBgSync] = useState(true)
   const [offlineDays, setOfflineDays] = useState(3)
   const [isEditing, setIsEditing] = useState(false)
-  const [online, setOnline] = useState(true)
   const sections = [
     { k: "agence",        label: "Agence",       icon: <I.Pin/> },
     { k: "tpe",           label: "Terminaux TPE", icon: <I.Wifi/> },
@@ -71,9 +70,6 @@ export default function SettingsPage() {
           </>
         ) : (
           <>
-          <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
-            <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
-          </button>
           <Novu />
           </>
         )}

@@ -167,7 +167,6 @@ export default function ObjectifsPage() {
   const [agent, setAgent] = useState("tous")
   const [sortBy, setSortBy] = useState("pct")
   const [sortDir, setSortDir] = useState("desc")
-  const [online, setOnline] = useState(true)
   
   const agents = useMemo(() => ["tous",    ...Array.from(new Set(OBJECTIFS.map(o => o.agent)))],    [])
   const cats   = useMemo(() => ["toutes",  ...Array.from(new Set(OBJECTIFS.map(o => o.category)))], [])
@@ -227,9 +226,6 @@ export default function ObjectifsPage() {
         title="Objectifs d'épargne"
         sub={`${counts.tous} objectifs · ${counts.encours} en cours · ${counts.atteints} atteints sur 12 mois`}
       >
-          <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
-          <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
-        </button>
         <Novu />
       </PageHeader>
 

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { fmt, fmtDateTime, initials, relTime, KPI, Loading, PageHeader } from '../components'
+import { fmt, fmtDateTime, initials, relTime, KPI, Loading, PageHeader, SearchInput } from '../components'
 import Novu from '../components/Inbox'
 
 function ClientDrawer({ client, onClose }) {
@@ -81,7 +81,6 @@ export default function ClientsPage() {
   const [view, setView] = useState("table")
   const [selected, setSelected] = useState(new Set())
   const [openClient, setOpenClient] = useState(null)
-  const [online, setOnline] = useState(true)
 
   const rows = useQuery(api.admin.listCustomers)
   const CLIENTS = rows ?? []
@@ -151,9 +150,6 @@ export default function ClientsPage() {
         title="Clients"
         sub={`${CLIENTS.length} fiches · ${counts.actif} actives · ${counts.attente} en attente KYC`}
       >
-          <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
-          <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
-        </button>
         <Novu />
       </PageHeader>
 
@@ -161,6 +157,7 @@ export default function ClientsPage() {
         {CLIENT_KPIS.map(k => <KPI key={k.label} k={k}/>)}
       </section>
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <SearchInput placeholder="Nom, téléphone, village…" value={q} onChange={e => setQ(e.target.value)} />
         <button className="btn"><I.Export size={14}/>Exporter</button>
         <button className="btn brand"><I.Plus size={14} stroke="white"/>Nouveau client</button>
       </div>
