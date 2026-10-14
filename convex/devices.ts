@@ -34,8 +34,8 @@ async function getDevice(ctx: MutationCtx, serialNumber: string) {
 }
 
 /**
- * Bind an active device to an active user who has no terminal, requiring
- * devices:bind permission. Record the actor and time when the binding changes.
+ * Bind an active device to an active field agent or supervisor who has no
+ * terminal, requiring devices:bind permission. Record the actor and time when the binding changes.
  * Return the device ID; an existing binding to the same user is a no-op.
  */
 export const bindDevice = mutation({
@@ -55,6 +55,10 @@ export const bindDevice = mutation({
     const agent = await ctx.db.get(args.userId);
     if (!agent) throw new Error("Agent not found");
     if (agent.status !== "active") throw new Error("Agent is suspended");
+    // Only collecting roles (field_agent, supervisor) need a terminal
+    if (!(await authz.can(ctx, agent.tokenIdentifier, "transactions:collect"))) {
+      throw new Error("Only field agents and supervisors can be bound to a TPE");
+    }
 
     // One terminal per agent, so every collection traces to a single device
     const existing = await ctx.db
