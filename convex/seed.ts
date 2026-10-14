@@ -1,7 +1,7 @@
 // convex/seed.ts — dev-only mock data
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 
-export const seedDatabase = mutation({
+export const seedDatabase = internalMutation({
   args: {},
   handler: async (ctx) => {
     // ── Organization ─────────────────────────────────────────────────────────

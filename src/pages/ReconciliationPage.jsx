@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { fmt, PageHeader } from '../components'
+import { fmt, initials, Loading, PageHeader } from '../components'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -20,12 +22,6 @@ const DENOMS = [
   { v: 5,     kind: "pièce",  color: "oklch(0.82 0.02 80)"  },
 ]
 
-const INITIAL_COUNT_OPEN = {
-  "billet-10000": 18, "billet-5000": 16, "billet-2000": 8, "billet-1000": 5,
-  "billet-500": 4, "pièce-500": 3, "pièce-250": 4, "pièce-200": 5, "pièce-100": 5,
-  "pièce-50": 0, "pièce-25": 0, "pièce-10": 0, "pièce-5": 0,
-}
-
 const STATUS_META = {
   "en cours":     { label: "En cours",     cls: "rec-status open"     },
   "écart":        { label: "Écart",        cls: "rec-status variance" },
@@ -33,75 +29,47 @@ const STATUS_META = {
   "signée":       { label: "Signée",       cls: "rec-status signed"   },
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── Mapping from Convex rows ─────────────────────────────────────────────────
 
-const RECON_RECORDS = [
-  {
-    id: "REC-2026-0142", date: "5 mai 2026", dateShort: "05/05",
-    agent: "K. Djibril", agentInit: "KD", drawer: "Caisse A · TPE-014",
-    opened: "07:55", closed: null,
+const STATUS_FROM_DB = { pending: "en cours", settled: "signée", discrepancy: "écart" }
+
+const hhmm = (ts) => new Date(ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+const longDate = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+const shortDate = (iso) => iso.slice(8, 10) + "/" + iso.slice(5, 7)
+const ledger = (cash) => ({ cash, om: 0, moov: 0, bank: 0 })
+
+function fromReconciliation(r) {
+  return {
+    id: r.id, agentId: r.agentId, timestamp: r.timestamp,
+    date: longDate(r.date), dateShort: shortDate(r.date),
+    agent: r.agent, agentInit: initials(r.agent), drawer: `Caisse · ${r.tpe}`,
+    opened: "—", closed: hhmm(r.timestamp),
+    status: STATUS_FROM_DB[r.status],
+    txCount: r.txCount,
+    expected: ledger(r.expected),
+    counted:  ledger(r.counted),
+    notes: r.notes,
+    signedBy: r.status === "settled" ? r.verifiedBy : null,
+    signedAt: r.status === "settled" ? hhmm(r.timestamp) : null,
+    verifiedBy: r.verifiedBy,
+  }
+}
+
+function fromOpenSession(o) {
+  return {
+    id: `open-${o.agentId}`, agentId: o.agentId, timestamp: o.opened,
+    date: longDate(o.date), dateShort: shortDate(o.date),
+    agent: o.agent, agentInit: initials(o.agent), drawer: `Caisse · ${o.tpe}`,
+    opened: hhmm(o.opened), closed: null,
     status: "en cours",
-    txCount: 18,
-    expected: { cash: 285000, om: 84000, moov: 32000, bank: 0 },
-    counted:  { cash: 283500, om: 84000, moov: 32000, bank: 0 },
-    notes: "Comptage en cours — pause déjeuner",
-  },
-  {
-    id: "REC-2026-0141", date: "4 mai 2026", dateShort: "04/05",
-    agent: "A. Ouédraogo", agentInit: "AO", drawer: "Caisse B · TPE-021",
-    opened: "08:02", closed: "18:15",
-    status: "écart",
-    txCount: 24,
-    expected: { cash: 412000, om: 156000, moov: 48000, bank: 50000 },
-    counted:  { cash: 405500, om: 156000, moov: 48000, bank: 50000 },
-    notes: "Écart de 6 500 FCFA — billet 5000 manquant + 1500 monnaie",
-    flagged: ["TX-2026-0411"],
-  },
-  {
-    id: "REC-2026-0140", date: "4 mai 2026", dateShort: "04/05",
-    agent: "K. Djibril", agentInit: "KD", drawer: "Caisse A · TPE-014",
-    opened: "08:00", closed: "18:08",
-    status: "signée",
-    txCount: 31,
-    expected: { cash: 528000, om: 124000, moov: 28000, bank: 100000 },
-    counted:  { cash: 528000, om: 124000, moov: 28000, bank: 100000 },
-    notes: "Équilibrée. Signée par M. Sankara (superviseur).",
-    signedBy: "M. Sankara", signedAt: "18:14",
-  },
-  {
-    id: "REC-2026-0139", date: "3 mai 2026", dateShort: "03/05",
-    agent: "K. Djibril", agentInit: "KD", drawer: "Caisse A · TPE-014",
-    opened: "07:58", closed: "18:02",
-    status: "signée",
-    txCount: 22,
-    expected: { cash: 318000, om: 92000, moov: 18000, bank: 0 },
-    counted:  { cash: 318000, om: 92000, moov: 18000, bank: 0 },
-    notes: "Équilibrée.",
-    signedBy: "M. Sankara", signedAt: "18:10",
-  },
-  {
-    id: "REC-2026-0138", date: "3 mai 2026", dateShort: "03/05",
-    agent: "A. Ouédraogo", agentInit: "AO", drawer: "Caisse B · TPE-021",
-    opened: "08:05", closed: "18:20",
-    status: "écart résolu",
-    txCount: 19,
-    expected: { cash: 245000, om: 78000, moov: 22000, bank: 0 },
-    counted:  { cash: 247000, om: 78000, moov: 22000, bank: 0 },
-    notes: "Surplus 2 000 FCFA — dépôt non saisi (TX rétabli).",
-    signedBy: "M. Sankara", signedAt: "18:35",
-  },
-  {
-    id: "REC-2026-0137", date: "2 mai 2026", dateShort: "02/05",
-    agent: "K. Djibril", agentInit: "KD", drawer: "Caisse A · TPE-014",
-    opened: "08:00", closed: "18:00",
-    status: "signée",
-    txCount: 27,
-    expected: { cash: 392000, om: 105000, moov: 24000, bank: 50000 },
-    counted:  { cash: 392000, om: 105000, moov: 24000, bank: 50000 },
-    notes: "Équilibrée.",
-    signedBy: "M. Sankara", signedAt: "18:08",
-  },
-]
+    txCount: o.txCount,
+    expected: ledger(o.expected),
+    counted:  ledger(0),
+    notes: "",
+  }
+}
+
+const PERIOD_DAYS = { "24h": 1, "7j": 7, "30j": 30, "Tout": null }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -134,25 +102,36 @@ function reverseEngineer(total) {
 
 export default function ReconciliationPage() {
   const [selectedId, setSelectedId] = useState(null)
-  const selected = RECON_RECORDS.find(r => r.id === selectedId)
+  const recs = useQuery(api.admin.listReconciliations)
+  const open = useQuery(api.admin.openSessions)
+
+  const records = useMemo(() => {
+    if (recs === undefined || open === undefined) return undefined
+    return [...open.map(fromOpenSession), ...recs.map(fromReconciliation)]
+  }, [recs, open])
+
+  if (records === undefined) return <Loading />
+  const selected = records.find(r => r.id === selectedId)
 
   if (selected) {
-    return <ReconciliationDetail record={selected} onBack={() => setSelectedId(null)} />
+    return <ReconciliationDetail record={selected} onBack={() => setSelectedId(null)} onDone={setSelectedId} />
   }
-  return <ReconciliationIndex onOpen={setSelectedId} />
+  return <ReconciliationIndex records={records} onOpen={setSelectedId} />
 }
 
 // ─── Index list ───────────────────────────────────────────────────────────────
 
-function ReconciliationIndex({ onOpen }) {
+function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
   const [seg, setSeg]       = useState("tous")
   const [agent, setAgent]   = useState("tous")
   const [period, setPeriod] = useState("7j")
   const [q, setQ]           = useState("")
 
-  const agents = useMemo(() => ["tous", ...Array.from(new Set(RECON_RECORDS.map(r => r.agent)))], [])
+  const agents = useMemo(() => ["tous", ...Array.from(new Set(RECON_RECORDS.map(r => r.agent)))], [RECON_RECORDS])
 
   const filtered = useMemo(() => RECON_RECORDS.filter(r => {
+    const days = PERIOD_DAYS[period]
+    if (days && r.timestamp < Date.now() - days * 86_400_000) return false
     if (seg === "ouverts" && r.status !== "en cours") return false
     if (seg === "ecarts"  && !(r.status === "écart" || r.status === "écart résolu")) return false
     if (seg === "signes"  && r.status !== "signée") return false
@@ -162,7 +141,7 @@ function ReconciliationIndex({ onOpen }) {
       if (!blob.includes(q.toLowerCase())) return false
     }
     return true
-  }), [seg, agent, q])
+  }), [RECON_RECORDS, period, seg, agent, q])
 
   const counts = {
     tous:    RECON_RECORDS.length,
@@ -171,27 +150,31 @@ function ReconciliationIndex({ onOpen }) {
     signes:  RECON_RECORDS.filter(r => r.status === "signée").length,
   }
 
-  const totalVarianceAbs = RECON_RECORDS.reduce((s, r) => s + Math.abs(varianceOf(r).total), 0)
+  const weekAgo          = Date.now() - 7 * 86_400_000
+  const closedWeek       = RECON_RECORDS.filter(r => r.status !== "en cours" && r.timestamp >= weekAgo)
+  const totalVarianceAbs = closedWeek.reduce((s, r) => s + Math.abs(varianceOf(r).total), 0)
   const openCount        = counts.ouverts
   const varianceCount    = RECON_RECORDS.filter(r => r.status === "écart").length
-  const signedThisWeek   = RECON_RECORDS.filter(r => r.status === "signée").length
+  const signedThisWeek   = closedWeek.filter(r => r.status === "signée").length
+  const openSessions     = RECON_RECORDS.filter(r => r.status === "en cours")
 
   const kpis = [
-    { label: "Sessions ouvertes",  value: String(openCount),          note: openCount === 1 ? "1 caissier en service" : `${openCount} caissiers en service`, icon: "wallet", delta: "0",    dir: "up"   },
-    { label: "Écarts non résolus", value: String(varianceCount),      note: "Action requise",       icon: "alert",  delta: "+1",   dir: "down" },
-    { label: "Écart cumulé (7 j)", value: fmt(totalVarianceAbs), unit: "FCFA", note: "Tous postes confondus", icon: "coin",   delta: "−24%", dir: "up"   },
-    { label: "Signées (7 j)",      value: String(signedThisWeek),     note: "Sur 6 sessions",       icon: "check",  delta: "+3",   dir: "up"   },
+    { label: "Sessions ouvertes",  value: String(openCount),      note: openCount === 1 ? "1 agent à liquider" : `${openCount} agents à liquider`, icon: "wallet" },
+    { label: "Écarts",             value: String(varianceCount),  note: "Enregistrés avec écart", icon: "alert" },
+    { label: "Écart cumulé (7 j)", value: fmt(totalVarianceAbs), unit: "FCFA", note: "Tous postes confondus", icon: "coin" },
+    { label: "Signées (7 j)",      value: String(signedThisWeek), note: `Sur ${closedWeek.length} session${closedWeek.length > 1 ? "s" : ""}`, icon: "check" },
   ]
 
   return (
     <div className="recon-page">
       <PageHeader crumbs={["Réconciliation"]} title="Réconciliation de caisse">
         <button className="btn"><I.Export size={14}/>Exporter</button>
-        <button className="btn brand"><I.Plus size={14} stroke="white"/>Nouvelle session</button>
       </PageHeader>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-        <div className="h1-sub" style={{ flex: 1 }}>Mardi 5 mai 2026 · Agence Bobo-Dioulasso · 1 session ouverte</div>
+        <div className="h1-sub" style={{ flex: 1, textTransform: "capitalize" }}>
+          {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {openCount} session{openCount > 1 ? "s" : ""} ouverte{openCount > 1 ? "s" : ""}
+        </div>
         <div className="search" style={{ width: 240 }}>
           <I.Search /><input placeholder="ID, agent, caisse…" value={q} onChange={e => setQ(e.target.value)} />
         </div>
@@ -214,29 +197,24 @@ function ReconciliationIndex({ onOpen }) {
             </div>
             <div className="kpi-value">{k.value}{k.unit && <span className="unit"> {k.unit}</span>}</div>
             <div className="kpi-foot">
-              <span className={"delta " + (k.dir === "up" ? "up" : "down")}>
-                {k.dir === "up" ? <I.ArrowUR size={10} stroke="currentColor"/> : <I.ArrowDR size={10} stroke="currentColor"/>}
-                {k.delta}
-              </span>
               <span>{k.note}</span>
             </div>
           </div>
         ))}
       </section>
 
-      {openCount > 0 && (
-        <div className="recon-banner">
+      {openSessions.map(o => (
+        <div className="recon-banner" key={o.id}>
           <div className="recon-banner-icon"><I.Wallet size={18}/></div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>Session du jour ouverte — Caisse A</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Session du jour ouverte — {o.agent}</div>
             <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 2 }}>
-              K. Djibril · TPE-014 · ouverte à 07:55 · 18 mouvements ·
-              <span style={{ color: "var(--neg)", fontWeight: 550, marginLeft: 6 }}>écart provisoire −1 500 FCFA</span>
+              {o.drawer} · premier mouvement à {o.opened} · {o.txCount} mouvements · théorique {fmt(o.expected.cash)} FCFA
             </div>
           </div>
-          <button className="btn" onClick={() => onOpen("REC-2026-0142")}>Reprendre le comptage <I.Arrow size={12}/></button>
+          <button className="btn" onClick={() => onOpen(o.id)}>Compter la caisse <I.Arrow size={12}/></button>
         </div>
-      )}
+      ))}
 
       <div className="card">
         <div className="filter-bar">
@@ -284,10 +262,10 @@ function ReconciliationIndex({ onOpen }) {
                 const countedTotal  = sumLedger(r.counted)
                 return (
                   <tr key={r.id} onClick={() => onOpen(r.id)}>
-                    <td style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--ink-2)" }}>{r.id}</td>
+                    <td style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--ink-2)" }}>{r.status === "en cours" ? "—" : r.id.slice(-8).toUpperCase()}</td>
                     <td>
                       <div>{r.date}</div>
-                      <div className="cell-sub">{r.opened}{r.closed ? ` → ${r.closed}` : " · ouverte"}</div>
+                      <div className="cell-sub">{r.closed ? `clôturée ${r.closed}` : `ouverte ${r.opened}`}</div>
                     </td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -328,11 +306,6 @@ function ReconciliationIndex({ onOpen }) {
           )}
           <div className="table-foot">
             <span>{filtered.length} sur {RECON_RECORDS.length} sessions</span>
-            <div className="pager">
-              <button className="btn ghost sm" disabled>‹ Précédent</button>
-              <span className="page-num on">1</span>
-              <button className="btn ghost sm">Suivant ›</button>
-            </div>
           </div>
         </div>
       </div>
@@ -342,10 +315,13 @@ function ReconciliationIndex({ onOpen }) {
 
 // ─── Detail wizard ────────────────────────────────────────────────────────────
 
-function ReconciliationDetail({ record, onBack }) {
+function ReconciliationDetail({ record, onBack, onDone }) {
   const initialCounts = record.status === "en cours"
-    ? INITIAL_COUNT_OPEN
+    ? {}
     : reverseEngineer(record.counted.cash)
+  const settle = useMutation(api.reconciliation.settleDailyCash)
+  const [busy, setBusy]   = useState(false)
+  const [error, setError] = useState(null)
 
   const [counts, setCounts] = useState(initialCounts)
   const [om,    setOM]      = useState(record.counted.om)
@@ -367,9 +343,22 @@ function ReconciliationDetail({ record, onBack }) {
   variance.total = variance.cash + variance.om + variance.moov + variance.bank
 
   const meta      = STATUS_META[record.status]
-  const isClosed  = record.status === "signée" || record.status === "écart résolu"
+  // Anything already persisted in Convex is read-only; only today's open session is editable
+  const isClosed  = record.status !== "en cours"
   const totalCounted  = cashCounted + om + moov + bank
   const totalExpected = sumLedger(record.expected)
+
+  const onSettle = async () => {
+    setBusy(true); setError(null)
+    try {
+      const { reconciliationId } = await settle({ agentId: record.agentId, physicalAmount: totalCounted, notes: notes || undefined })
+      onDone(reconciliationId)
+    } catch (e) {
+      setError(e.data ?? e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const setDenom = (key, n) => {
     const next = Math.max(0, parseInt(n, 10) || 0)
@@ -387,7 +376,6 @@ function ReconciliationDetail({ record, onBack }) {
       <PageHeader crumbs={["Réconciliation", record.id]} title={null}>
         <button className="btn ghost sm" onClick={onBack}>← Toutes les sessions</button>
         <button className="btn"><I.Export size={14}/>Exporter PDF</button>
-        <button className="btn"><I.Receipt size={14}/>Voir transactions</button>
       </PageHeader>
 
       <div style={{ marginBottom: 14 }}>
@@ -396,8 +384,8 @@ function ReconciliationDetail({ record, onBack }) {
           <span className={meta.cls} style={{ fontSize: 12 }}><span className="rec-status-dot"/>{meta.label}</span>
         </h1>
         <div className="h1-sub">
-          {record.agent} · {record.drawer} · ouverte à {record.opened}
-          {record.closed ? ` · clôturée à ${record.closed}` : " · session ouverte"}
+          {record.agent} · {record.drawer}
+          {record.closed ? ` · clôturée à ${record.closed}` : ` · premier mouvement à ${record.opened}`}
           {" · "}{record.txCount} mouvements
         </div>
       </div>
@@ -424,10 +412,10 @@ function ReconciliationDetail({ record, onBack }) {
           </div>
         </div>
         <div>
-          <div className="recon-meta-l">{record.signedBy ? "Signée par" : "Superviseur"}</div>
+          <div className="recon-meta-l">{record.verifiedBy ? "Vérifiée par" : "Vérificateur"}</div>
           <div className="recon-meta-v">
-            {record.signedBy
-              ? <>{record.signedBy} <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>· {record.signedAt}</span></>
+            {record.verifiedBy
+              ? <>{record.verifiedBy} <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>· {record.closed}</span></>
               : <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>En attente</span>}
           </div>
         </div>
@@ -535,35 +523,6 @@ function ReconciliationDetail({ record, onBack }) {
             </div>
           </div>
 
-          {record.flagged && record.flagged.length > 0 && (
-            <div className="recon-side-card">
-              <div className="card-head">
-                <div>
-                  <div className="card-title">Transactions à vérifier</div>
-                  <div className="card-sub">{record.flagged.length} mouvement(s) signalé(s) par l'algorithme</div>
-                </div>
-                <span className="rec-status variance" style={{ marginLeft: "auto" }}>
-                  <span className="rec-status-dot"/>Action requise
-                </span>
-              </div>
-              {record.flagged.map(id => (
-                <div className="recon-flag" key={id}>
-                  <div className="recon-flag-icon"><I.Bell size={14}/></div>
-                  <div className="recon-flag-body">
-                    <div className="recon-flag-label">Retrait Drissa Koné — 20 000 FCFA</div>
-                    <div className="recon-flag-meta">
-                      <span className="recon-flag-id">{id}</span> · 29 avr. 12:08 · A. Ouédraogo · TPE-021
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--ink-2)", marginTop: 6 }}>
-                      Saisie 2 min avant la fermeture, statut <em>annulée</em>. Possible cause de l'écart.
-                    </div>
-                  </div>
-                  <button className="btn ghost sm">Voir</button>
-                </div>
-              ))}
-            </div>
-          )}
-
           <div className="recon-side-card">
             <div className="card-head">
               <div>
@@ -572,10 +531,10 @@ function ReconciliationDetail({ record, onBack }) {
               </div>
             </div>
             {[
-              { n: 1, label: "Ouverture de session",    meta: `${record.agent} · ${record.opened}` },
+              { n: 1, label: "Ouverture de session",    meta: record.closed ? record.agent : `${record.agent} · ${record.opened}` },
               { n: 2, label: "Comptage physique",        meta: stepStatus(2) === "done" ? `Soumis à ${record.closed || "en cours"}` : "Espèces, mobile money, banque" },
               { n: 3, label: "Validation de l'écart",   meta: variance.total === 0 ? "Aucun écart à justifier" : `Justifier ${fmt(Math.abs(variance.total))} FCFA` },
-              { n: 4, label: "Signature superviseur",   meta: record.signedBy ? `${record.signedBy} · ${record.signedAt}` : "M. Sankara — en attente" },
+              { n: 4, label: "Signature",               meta: record.verifiedBy ? `${record.verifiedBy} · ${record.closed}` : "En attente" },
             ].map(s => (
               <div key={s.n} className={"recon-step " + stepStatus(s.n)}>
                 <div className="recon-step-num">{stepStatus(s.n) === "done" ? "✓" : s.n}</div>
@@ -606,20 +565,11 @@ function ReconciliationDetail({ record, onBack }) {
                     <button className="btn"><I.Export size={14}/>Télécharger PV</button>
                   </div>
                 </>
-              ) : record.status === "écart" ? (
-                <>
-                  <button className="btn">Sauvegarder brouillon</button>
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                    <button className="btn">Marquer écart résolu</button>
-                    <button className="btn brand"><I.Check size={14} stroke="white"/>Soumettre au superviseur</button>
-                  </div>
-                </>
               ) : (
                 <>
-                  <button className="btn">Sauvegarder brouillon</button>
+                  {error && <span style={{ fontSize: 12, color: "var(--neg)" }}>{String(error)}</span>}
                   <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                    <button className="btn">Pause</button>
-                    <button className="btn brand">
+                    <button className="btn brand" disabled={busy} onClick={onSettle}>
                       <I.Check size={14} stroke="white"/>
                       {variance.total === 0 ? "Clôturer la session" : "Soumettre l'écart"}
                     </button>
