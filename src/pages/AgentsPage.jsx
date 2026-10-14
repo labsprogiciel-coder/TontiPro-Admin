@@ -50,8 +50,8 @@ function BindCell({ device, agents }) {
     }
   }
 
-  // Only active agents without a terminal can receive one
-  const eligible = agents.filter(a => a.status === "active" && !a.device)
+  // Mirrors bindDevice: active field agents / supervisors without a terminal
+  const eligible = agents.filter(a => a.status === "active" && a.canCollect && !a.device)
 
   return (
     <div>

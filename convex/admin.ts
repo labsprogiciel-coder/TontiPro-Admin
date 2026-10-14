@@ -248,8 +248,10 @@ export const listAgents = query({
           (t) => t.agentId === u._id && t.status === "completed" && t.timestamp >= monthStart,
         );
         let roles: string[] = [];
+        let canCollect = false;
         try {
           roles = (await authz.getUserRoles(ctx, u.tokenIdentifier)).map((r) => r.role);
+          canCollect = await authz.can(ctx, u.tokenIdentifier, "transactions:collect");
         } catch {
           // Role lookup is informative only; ignore component errors
         }
@@ -261,6 +263,7 @@ export const listAgents = query({
           branch: branches.get(u.branchId)?.name ?? "—",
           role: roles.map((r) => ROLE_LABELS[r] ?? r).join(", ") || "—",
           status: u.status,
+          canCollect,
           clients: data.customers.filter((c) => c.onboardedBy === u._id).length,
           collected: monthTx.reduce((s, t) => s + t.amount, 0),
           txMonth: monthTx.length,
