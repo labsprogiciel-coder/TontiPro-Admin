@@ -39,6 +39,9 @@ export default defineSchema({
     tokenIdentifier: v.optional(v.string()), // Legacy external-auth ID, unused
     branchId: v.id("branches"),
     status: v.union(v.literal("active"), v.literal("suspended")),
+    // One-time code an administrator issues for "Première connexion"
+    activationCodeHash: v.optional(v.string()),
+    activationExpiresAt: v.optional(v.number()),
   }).index("email", ["email"]), // Name required by Convex Auth
 
   // 3. KYC & CUSTOMERS

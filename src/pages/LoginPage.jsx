@@ -3,13 +3,15 @@ import { useAuthActions } from '@convex-dev/auth/react'
 import { I } from '../icons'
 
 // Staff-only sign-in. "Première connexion" sets the password for a staff
-// member an administrator already created; there is no open sign-up.
+// member an administrator already created, using the one-time activation
+// code that administrator issued; there is no open sign-up.
 export default function LoginPage() {
   const { signIn } = useAuthActions()
   const [flow, setFlow]       = useState("signIn")
   const [email, setEmail]     = useState("")
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
+  const [code, setCode]       = useState("")
   const [busy, setBusy]       = useState(false)
   const [error, setError]     = useState(null)
 
@@ -24,11 +26,14 @@ export default function LoginPage() {
     }
     setBusy(true)
     try {
-      await signIn("password", { email: email.trim().toLowerCase(), password, flow })
+      await signIn("password", {
+        email: email.trim().toLowerCase(), password, flow,
+        ...(firstLogin && { code: code.trim().toUpperCase() }),
+      })
     } catch {
       // Same message whatever the cause, so the form never reveals which emails are staff
       setError(firstLogin
-        ? "Impossible d'activer ce compte. Vérifiez l'email ou contactez l'Admin IT."
+        ? "Activation impossible. Vérifiez l'email et le code d'activation, ou demandez un nouveau code à l'Admin IT."
         : "Email ou mot de passe incorrect.")
     } finally {
       setBusy(false)
@@ -37,7 +42,7 @@ export default function LoginPage() {
 
   const switchFlow = () => {
     setFlow(firstLogin ? "signIn" : "signUp")
-    setError(null); setPassword(""); setConfirm("")
+    setError(null); setPassword(""); setConfirm(""); setCode("")
   }
 
   return (
@@ -56,7 +61,7 @@ export default function LoginPage() {
         </h1>
         <div className="h1-sub" style={{ marginBottom: 20 }}>
           {firstLogin
-            ? "Choisissez le mot de passe de votre compte agence."
+            ? "Saisissez le code d'activation reçu de l'Admin IT, puis choisissez votre mot de passe."
             : "Accès réservé au personnel de l'agence."}
         </div>
 
@@ -66,6 +71,14 @@ export default function LoginPage() {
             <input className="input" type="email" autoComplete="username" required
               value={email} onChange={e => setEmail(e.target.value)} placeholder="prenom.nom@kauri.bf" />
           </label>
+          {firstLogin && (
+            <label className="field">
+              <span className="field-label">Code d'activation</span>
+              <input className="input" required autoComplete="one-time-code" spellCheck={false}
+                value={code} onChange={e => setCode(e.target.value)} placeholder="K7QM4TPZ"
+                style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.08em", textTransform: "uppercase" }} />
+            </label>
+          )}
           <label className="field">
             <span className="field-label">{firstLogin ? "Nouveau mot de passe" : "Mot de passe"}</span>
             <input className="input" type="password" required

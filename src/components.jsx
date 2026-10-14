@@ -161,7 +161,7 @@ export function Sidebar({ active, setActive }) {
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="user-name">{me?.name ?? "…"}</div>
           <div className="user-role">
-            {[me?.roles.map(r => ROLE_LABELS[r] ?? r).join(", ") || "Aucun rôle", me?.branch].filter(Boolean).join(" · ")}
+            {[me?.roles?.map(r => ROLE_LABELS[r] ?? r).join(", ") || "Aucun rôle", me?.branch].filter(Boolean).join(" · ")}
           </div>
         </div>
         <button className="btn ghost sm" title="Se déconnecter" style={{ padding: "5px" }} onClick={() => signOut()}><I.Logout size={14}/></button>

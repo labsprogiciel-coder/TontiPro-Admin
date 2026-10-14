@@ -11,6 +11,15 @@ const ROLE = v.union(
   v.literal("it_admin"),
 );
 
+const ACTIVATION_TTL_MS = 48 * 60 * 60 * 1000;
+// No 0/O/1/I so codes survive being read out over the phone
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+export async function hashActivationCode(code: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 // The signed-in, active staff member. Authz user IDs are users._id.
 export async function requireUser(ctx: QueryCtx) {
   const userId = await getAuthUserId(ctx);
@@ -28,12 +37,14 @@ export const me = query({
     if (!userId) return null;
     const user = await ctx.db.get(userId);
     if (!user) return null;
+    if (user.status !== "active") return { id: user._id, name: user.fullName, active: false as const };
     const [branch, roles] = await Promise.all([
       ctx.db.get(user.branchId),
       authz.getUserRoles(ctx, user._id).catch(() => []),
     ]);
     return {
       id: user._id,
+      active: true as const,
       name: user.fullName,
       email: user.email,
       branch: branch?.name ?? null,
@@ -53,5 +64,29 @@ export const assignRole = internalMutation({
     if (!user) throw new Error("No staff account for this email");
     await authz.assignRole(ctx, user._id, args.role);
     return user._id;
+  },
+});
+
+// Issue the one-time code a staff member needs for "Première connexion".
+// Re-issuing replaces the previous code. Only the hash is stored.
+//   npx convex run users:issueActivationCode '{"email":"…"}'
+export const issueActivationCode = internalMutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", args.email.trim().toLowerCase()))
+      .unique();
+    if (!user) throw new Error("No staff account for this email");
+    if (user.status !== "active") throw new Error("Account suspended");
+
+    const bytes = crypto.getRandomValues(new Uint8Array(8));
+    const code = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+    const expiresAt = Date.now() + ACTIVATION_TTL_MS;
+    await ctx.db.patch(user._id, {
+      activationCodeHash: await hashActivationCode(code),
+      activationExpiresAt: expiresAt,
+    });
+    return { code, expiresAt: new Date(expiresAt).toISOString() };
   },
 });
