@@ -14,13 +14,24 @@ export const settleDailyCash = mutation({
     await authz.require(ctx, identity.subject, "reconciliation:liquidate");
 
     const today = new Date().toISOString().split('T')[0];
+    const dayStart = Date.parse(today + "T00:00:00Z");
 
-    // 2. Aggregate all 'completed' transactions for this agent today
-    // Note: In production, you'd use a more robust time-range check
+    const existing = await ctx.db
+      .query("reconciliations")
+      .withIndex("by_agent_date", (q) => q.eq("agentId", args.agentId).eq("date", today))
+      .first();
+    if (existing) throw new Error("Daily cash already reconciled for this agent");
+
+    // 2. Aggregate all 'completed' transactions for this agent today (UTC day)
     const transactions = await ctx.db
       .query("transactions")
       .withIndex("by_agent_date", (q) => q.eq("agentId", args.agentId))
-      .filter((q) => q.eq(q.field("status"), "completed"))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("status"), "completed"),
+          q.gte(q.field("timestamp"), dayStart),
+        )
+      )
       .collect();
 
     const systemExpected = transactions.reduce((sum, tx) => sum + tx.amount, 0);

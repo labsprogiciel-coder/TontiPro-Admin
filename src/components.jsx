@@ -6,6 +6,38 @@ export function fmt(n) {
   return n.toLocaleString("fr-FR").replace(/,/g, " ")
 }
 
+export function initials(name = "") {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("")
+}
+
+export function relTime(ts) {
+  if (!ts) return "—"
+  const diff = Date.now() - ts
+  const min = Math.round(diff / 60000)
+  if (min < 1)  return "à l'instant"
+  if (min < 60) return `il y a ${min} min`
+  const h = Math.round(min / 60)
+  if (h < 24)   return `il y a ${h} h`
+  const d = Math.round(h / 24)
+  if (d === 1)  return "hier"
+  return `il y a ${d} j`
+}
+
+export function fmtDateTime(ts) {
+  if (!ts) return "—"
+  const d = new Date(ts)
+  const today = new Date()
+  const yesterday = new Date(Date.now() - 86_400_000)
+  const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+  if (d.toDateString() === today.toDateString())     return `Aujourd'hui, ${time}`
+  if (d.toDateString() === yesterday.toDateString()) return `Hier, ${time}`
+  return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}, ${time}`
+}
+
+export function Loading({ label = "Chargement…" }) {
+  return <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>{label}</div>
+}
+
 export function SearchInput({ placeholder, value, onChange, width = 240 }) {
   return (
     <div className="search" style={{ width }}>
@@ -74,11 +106,11 @@ export function Sidebar({ active, setActive }) {
   const items = [
     { group: "Principal", entries: [
       { id: "dashboard", label: "Tableau de bord", icon: <I.Grid /> },
-      { id: "clients",   label: "Clients",         icon: <I.Users />, badge: "142" },
-      { id: "tx",             label: "Transactions",    icon: <I.Receipt />, badge: "12" },
+      { id: "clients",   label: "Clients",         icon: <I.Users /> },
+      { id: "tx",             label: "Transactions",    icon: <I.Receipt /> },
       { id: "objectifs",      label: "Objectifs",       icon: <I.Pin /> },
       { id: "produits",       label: "Produits",        icon: <I.Wallet /> },
-      { id: "reconciliation", label: "Réconciliation",  icon: <I.Coin />,  badge: "1" },
+      { id: "reconciliation", label: "Réconciliation",  icon: <I.Coin /> },
     ]},
     { group: "Rapports", entries: [
       { id: "analyses", label: "Analyses",  icon: <I.Chart /> },
@@ -171,7 +203,7 @@ export function ClientsCard({ clients }) {
       <div className="card-head">
         <div>
           <div className="card-title">Derniers clients</div>
-          <div className="card-sub">{clients.length} ce mois · triés par activité</div>
+          <div className="card-sub">Triés par activité récente</div>
         </div>
         <span className="card-action">Voir tous <I.Arrow size={12}/></span>
       </div>
@@ -183,10 +215,10 @@ export function ClientsCard({ clients }) {
       <div className="clients-list">
         {filtered.map(c => (
           <div className="client-row" key={c.id}>
-            <div className="avatar">{c.initials}</div>
+            <div className="avatar">{initials(c.name)}</div>
             <div style={{ minWidth: 0 }}>
               <div className="client-name">{c.name}</div>
-              <div className="client-meta">{c.phone} · dernier mvt {c.lastTx}</div>
+              <div className="client-meta">{c.phone} · dernier mvt {relTime(c.lastTx)}</div>
             </div>
             <div className="client-amount">
               <div className="v">{fmt(c.balance)}<span className="u">FCFA</span></div>
@@ -210,7 +242,7 @@ export function TransactionsCard({ tx }) {
       <div className="card-head">
         <div>
           <div className="card-title">Transactions récentes</div>
-          <div className="card-sub">Dernières 24 h · tous agents</div>
+          <div className="card-sub">Derniers mouvements · tous agents</div>
         </div>
         <span className="card-action">Historique <I.Arrow size={12}/></span>
       </div>
@@ -222,7 +254,7 @@ export function TransactionsCard({ tx }) {
             </div>
             <div style={{ minWidth: 0 }}>
               <div className="tx-name">{t.label} — {t.client}</div>
-              <div className="tx-time">{t.time} · {t.agent}</div>
+              <div className="tx-time">{fmtDateTime(t.timestamp)} · {t.agent}</div>
             </div>
             <div className={"tx-amount " + t.type}>
               {t.type === "in" ? "+" : "−"}{fmt(t.amount)}<span className="u">FCFA</span>
@@ -237,7 +269,7 @@ export function TransactionsCard({ tx }) {
 export function VolumeChart({ data }) {
   const [range, setRange] = useState("6m")
   const w = 540, h = 200, pad = { l: 28, r: 12, t: 16, b: 26 }
-  const max = Math.max(...data.map(d => d.in + d.out)) * 1.15
+  const max = Math.max(1, ...data.map(d => d.in + d.out)) * 1.15
   const bw = (w - pad.l - pad.r) / data.length * 0.55
   const gap = (w - pad.l - pad.r) / data.length
 

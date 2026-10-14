@@ -1,30 +1,11 @@
 import { useState, useMemo } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import Novu from '../components/Inbox'
-import { fmt, PageHeader, SearchInput } from '../components'
+import { fmt, fmtDateTime, initials, Loading, PageHeader } from '../components'
 
-const TX_FULL = [
-  { id: "TX-2026-0421", type: "in",  client: "Awa Konaté",           clientInit: "AK", label: "Dépôt",      amount: 15000, time: "Aujourd'hui, 10:22", agent: "K. Djibril",   tpe: "TPE-014", channel: "TPE",    status: "validée",    reference: "DEP-A14-0421" },
-  { id: "TX-2026-0420", type: "out", client: "Ibrahim Traoré",       clientInit: "IT", label: "Retrait",    amount: 30000, time: "Aujourd'hui, 09:05", agent: "K. Djibril",   tpe: "TPE-014", channel: "Agence", status: "validée",    reference: "RET-A14-0420" },
-  { id: "TX-2026-0419", type: "in",  client: "Mariam Sankara",       clientInit: "MS", label: "Dépôt",      amount: 22000, time: "Aujourd'hui, 08:14", agent: "A. Ouédraogo", tpe: "TPE-021", channel: "TPE",    status: "validée",    reference: "DEP-B21-0419" },
-  { id: "TX-2026-0418", type: "in",  client: "Rasmata Kaboré",       clientInit: "RK", label: "Cotisation", amount: 5000,  time: "Aujourd'hui, 07:42", agent: "K. Djibril",   tpe: "TPE-014", channel: "TPE",    status: "validée",    reference: "COT-A14-0418" },
-  { id: "TX-2026-0417", type: "out", client: "Adama Compaoré",       clientInit: "AC", label: "Retrait",    amount: 12000, time: "Hier, 17:55",        agent: "A. Ouédraogo", tpe: "TPE-021", channel: "TPE",    status: "en attente", reference: "RET-B21-0417" },
-  { id: "TX-2026-0416", type: "in",  client: "Moussa Diallo",        clientInit: "MD", label: "Dépôt",      amount: 50000, time: "Hier, 16:45",        agent: "A. Ouédraogo", tpe: "TPE-021", channel: "Agence", status: "validée",    reference: "DEP-B21-0416" },
-  { id: "TX-2026-0415", type: "in",  client: "Fatoumata Zongo",      clientInit: "FZ", label: "Dépôt",      amount: 12500, time: "Hier, 14:18",        agent: "K. Djibril",   tpe: "TPE-014", channel: "TPE",    status: "validée",    reference: "DEP-A14-0415" },
-  { id: "TX-2026-0414", type: "out", client: "Salimata Ouédraogo",   clientInit: "SO", label: "Retrait",    amount: 8000,  time: "Hier, 11:30",        agent: "A. Ouédraogo", tpe: "TPE-021", channel: "TPE",    status: "validée",    reference: "RET-B21-0414" },
-  { id: "TX-2026-0413", type: "in",  client: "Boukary Sawadogo",     clientInit: "BS", label: "Cotisation", amount: 5000,  time: "29 avr., 17:02",     agent: "K. Djibril",   tpe: "TPE-014", channel: "TPE",    status: "validée",    reference: "COT-A14-0413" },
-  { id: "TX-2026-0412", type: "in",  client: "Aminata Tiendrébéogo", clientInit: "AT", label: "Dépôt",      amount: 35000, time: "29 avr., 15:34",     agent: "K. Djibril",   tpe: "TPE-014", channel: "TPE",    status: "validée",    reference: "DEP-A14-0412" },
-  { id: "TX-2026-0411", type: "out", client: "Drissa Koné",          clientInit: "DK", label: "Retrait",    amount: 20000, time: "29 avr., 12:08",     agent: "A. Ouédraogo", tpe: "TPE-021", channel: "Agence", status: "annulée",    reference: "RET-B21-0411" },
-  { id: "TX-2026-0410", type: "in",  client: "Awa Konaté",           clientInit: "AK", label: "Dépôt",      amount: 8000,  time: "28 avr., 09:14",     agent: "K. Djibril",   tpe: "TPE-014", channel: "TPE",    status: "validée",    reference: "DEP-A14-0410" },
-  { id: "TX-2026-0409", type: "in",  client: "Mariam Sankara",       clientInit: "MS", label: "Dépôt",      amount: 18000, time: "28 avr., 08:50",     agent: "A. Ouédraogo", tpe: "TPE-021", channel: "TPE",    status: "validée",    reference: "DEP-B21-0409" },
-]
-
-const TX_KPIS = [
-  { label: "Volume du jour",  value: "82 000", unit: "FCFA", note: "5 transactions",     icon: "wallet",  delta: "+18%", dir: "up" },
-  { label: "Dépôts (mois)",   value: "215",    unit: "",     note: "4 320 000 FCFA",     icon: "receipt", delta: "+12",  dir: "up" },
-  { label: "Retraits (mois)", value: "103",    unit: "",     note: "1 580 000 FCFA",     icon: "receipt", delta: "+4",   dir: "up" },
-  { label: "En attente",      value: "1",      unit: "",     note: "Validation requise", icon: "cloud",   delta: "−2",   dir: "up" },
-]
+const PERIODS = { "24h": 1, "7j": 7, "30j": 30, "Tout": null }
 
 const STATUS_STYLE = {
   "validée":    { cls: "actif",   label: "Validée"    },
@@ -34,6 +15,22 @@ const STATUS_STYLE = {
 
 function TxDrawer({ tx, onClose }) {
   const st = STATUS_STYLE[tx.status]
+  const reverse = useMutation(api.transactions.reverseTransaction)
+  const approve = useMutation(api.disbursements.approveDisbursement)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const run = async (fn) => {
+    setBusy(true); setError(null)
+    try { await fn(); onClose() }
+    catch (e) { setError(e.data ?? e.message) }
+    finally { setBusy(false) }
+  }
+  const onReverse = () => {
+    const reason = window.prompt("Motif de l'annulation")
+    if (reason) run(() => reverse({ transactionId: tx.id, reason }))
+  }
+  const onApprove = () => run(() => approve({ disbursementId: tx.id }))
   return (
     <>
       <div className="drawer-scrim" onClick={onClose}/>
@@ -42,7 +39,7 @@ function TxDrawer({ tx, onClose }) {
           <div>
             <div style={{ fontSize: 11, color: "var(--ink-3)", fontFamily: "var(--font-mono)" }}>{tx.id}</div>
             <div style={{ fontWeight: 600, fontSize: 18, letterSpacing: "-0.015em", marginTop: 2 }}>{tx.label} — {tx.client}</div>
-            <div className="cell-sub" style={{ marginTop: 2 }}>{tx.time} · {tx.agent}</div>
+            <div className="cell-sub" style={{ marginTop: 2 }}>{fmtDateTime(tx.timestamp)} · {tx.agent}</div>
           </div>
           <button className="btn ghost sm" onClick={onClose} style={{ padding: 6 }}>✕</button>
         </div>
@@ -68,39 +65,24 @@ function TxDrawer({ tx, onClose }) {
             <div className="card-title" style={{ marginBottom: 10 }}>Détails</div>
             <dl className="info-list">
               <dt>Statut</dt><dd><span className={"tag " + st.cls}>{st.label}</span></dd>
-              <dt>Référence</dt><dd style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{tx.reference}</dd>
+              <dt>Agence</dt><dd>{tx.branch}</dd>
               <dt>Canal</dt><dd>{tx.channel}</dd>
               <dt>Terminal</dt><dd style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{tx.tpe}</dd>
               <dt>Agent</dt><dd>{tx.agent}</dd>
               <dt>Client</dt><dd>{tx.client}</dd>
+              {tx.reason && <><dt>Motif annulation</dt><dd>{tx.reason}</dd></>}
+              {tx.reversedBy && <><dt>Annulée par</dt><dd>{tx.reversedBy}</dd></>}
             </dl>
           </div>
 
-          <div className="drawer-section">
-            <div className="card-title" style={{ marginBottom: 10 }}>Chronologie</div>
-            <div className="feed" style={{ padding: 0 }}>
-              {[
-                { t: "Saisie sur TPE",    time: tx.time,   dot: "muted" },
-                { t: "Validation locale", time: "+2 s",    dot: "muted" },
-                { t: "Sync vers serveur", time: "+1 min",  dot: "info"  },
-                { t: tx.status === "validée" ? "Confirmée" : tx.status === "en attente" ? "En attente de validation" : "Annulée par superviseur",
-                  time: tx.status === "validée" ? "+1 min 12 s" : "—", dot: tx.status === "validée" ? "brand" : "muted" },
-              ].map((s, i) => (
-                <div className="feed-item" key={i} style={{ paddingLeft: 0 }}>
-                  <div className={"feed-dot " + (s.dot === "muted" ? "muted" : s.dot === "info" ? "info" : "")}/>
-                  <div>
-                    <div className="feed-text">{s.t}</div>
-                    <div className="feed-time">{s.time}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          {error && (
+            <div className="drawer-section" style={{ color: "var(--neg)", fontSize: 13 }}>{String(error)}</div>
+          )}
         </div>
         <div className="drawer-foot">
           <button className="btn"><I.Export size={14}/>Reçu PDF</button>
-          {tx.status === "en attente" && <button className="btn brand" style={{ marginLeft: "auto" }}><I.Check size={14} stroke="white"/>Valider</button>}
-          {tx.status === "validée" && <button className="btn" style={{ marginLeft: "auto", color: "var(--neg)" }}>Annuler</button>}
+          {tx.kind === "disbursement" && tx.status === "en attente" && <button className="btn brand" style={{ marginLeft: "auto" }} disabled={busy} onClick={onApprove}><I.Check size={14} stroke="white"/>Approuver</button>}
+          {tx.kind === "transaction" && tx.status === "validée" && <button className="btn" style={{ marginLeft: "auto", color: "var(--neg)" }} disabled={busy} onClick={onReverse}>Annuler</button>}
         </div>
       </aside>
     </>
@@ -116,8 +98,17 @@ export default function TransactionsPage() {
   const [selected, setSelected] = useState(null)
   const [online, setOnline] = useState(true)
 
-  const agents   = useMemo(() => ["tous", ...Array.from(new Set(TX_FULL.map(t => t.agent)))], [])
-  const channels = useMemo(() => ["tous", ...Array.from(new Set(TX_FULL.map(t => t.channel)))], [])
+  // Round the window start to the hour so the query args stay stable between renders
+  const since = useMemo(() => {
+    const days = PERIODS[period]
+    if (!days) return undefined
+    return Math.floor((Date.now() - days * 86_400_000) / 3_600_000) * 3_600_000
+  }, [period])
+  const rows = useQuery(api.admin.listMovements, { since })
+  const TX_FULL = rows ?? []
+
+  const agents   = useMemo(() => ["tous", ...Array.from(new Set(TX_FULL.map(t => t.agent)))], [rows])
+  const channels = useMemo(() => ["tous", ...Array.from(new Set(TX_FULL.map(t => t.channel)))], [rows])
 
   const filtered = useMemo(() => TX_FULL.filter(t => {
     if (seg === "in"      && t.type !== "in")           return false
@@ -126,11 +117,11 @@ export default function TransactionsPage() {
     if (channel !== "tous" && t.channel !== channel)    return false
     if (agent   !== "tous" && t.agent   !== agent)      return false
     if (q) {
-      const blob = (t.client + " " + t.id + " " + t.reference + " " + t.tpe).toLowerCase()
+      const blob = (t.client + " " + t.id + " " + t.tpe).toLowerCase()
       if (!blob.includes(q.toLowerCase())) return false
     }
     return true
-  }), [q, seg, channel, agent])
+  }), [rows, q, seg, channel, agent])
 
   const totalIn  = filtered.filter(t => t.type === "in"  && t.status === "validée").reduce((s, t) => s + t.amount, 0)
   const totalOut = filtered.filter(t => t.type === "out" && t.status === "validée").reduce((s, t) => s + t.amount, 0)
@@ -143,12 +134,24 @@ export default function TransactionsPage() {
     pending: TX_FULL.filter(t => t.status === "en attente").length,
   }
 
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+  const todayRows = TX_FULL.filter(t => t.timestamp >= dayStart.getTime() && t.status === "validée")
+  const sumOf = (xs) => xs.reduce((s, t) => s + t.amount, 0)
+  const ins  = TX_FULL.filter(t => t.type === "in"  && t.status === "validée")
+  const outs = TX_FULL.filter(t => t.type === "out" && t.status === "validée")
+  const TX_KPIS = [
+    { label: "Volume du jour", value: fmt(sumOf(todayRows)), unit: "FCFA", note: `${todayRows.length} mouvement${todayRows.length > 1 ? "s" : ""}`, icon: "wallet" },
+    { label: "Dépôts",         value: String(ins.length),    unit: "",     note: `${fmt(sumOf(ins))} FCFA`,  icon: "receipt" },
+    { label: "Décaissements",  value: String(outs.length),   unit: "",     note: `${fmt(sumOf(outs))} FCFA`, icon: "receipt" },
+    { label: "En attente",     value: String(counts.pending), unit: "",    note: "Approbation requise",     icon: "cloud" },
+  ]
+
   return (
     <div className="tx-page">
       <PageHeader
         crumbs={["Transactions"]}
         title="Transactions"
-        sub={`${TX_FULL.length} mouvements · 2 TPE actifs · synchronisé il y a 1 min`}
+        sub={`${TX_FULL.length} mouvements`}
       >
         <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
           <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
@@ -168,10 +171,6 @@ export default function TransactionsPage() {
             </div>
             <div className="kpi-value">{k.value}{k.unit && <span className="unit">{k.unit}</span>}</div>
             <div className="kpi-foot">
-              <span className={"delta " + (k.dir === "up" ? "up" : "down")}>
-                {k.dir === "up" ? <I.ArrowUR size={10} stroke="currentColor"/> : <I.ArrowDR size={10} stroke="currentColor"/>}
-                {k.delta}
-              </span>
               <span>{k.note}</span>
             </div>
           </div>
@@ -192,7 +191,7 @@ export default function TransactionsPage() {
             {[
               { k: "tous",    label: "Tous",       n: counts.tous },
               { k: "in",      label: "Dépôts",     n: counts.in },
-              { k: "out",     label: "Retraits",   n: counts.out },
+              { k: "out",     label: "Décaissements", n: counts.out },
               { k: "pending", label: "En attente", n: counts.pending },
             ].map(t => (
               <button key={t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
@@ -245,13 +244,13 @@ export default function TransactionsPage() {
                 const st = STATUS_STYLE[t.status]
                 return (
                   <tr key={t.id} onClick={() => setSelected(t)} className={selected && selected.id === t.id ? "selected" : ""}>
-                    <td style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--ink-2)" }}>{t.id}</td>
+                    <td style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--ink-2)" }}>{t.id.slice(-8).toUpperCase()}</td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div className="avatar sm">{t.clientInit}</div>
+                        <div className="avatar sm">{initials(t.client)}</div>
                         <div>
                           <div style={{ fontWeight: 550 }}>{t.client}</div>
-                          <div className="cell-sub" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>{t.reference}</div>
+                          <div className="cell-sub">{t.branch}</div>
                         </div>
                       </div>
                     </td>
@@ -263,7 +262,7 @@ export default function TransactionsPage() {
                         {t.label}
                       </span>
                     </td>
-                    <td className="cell-sub">{t.time}</td>
+                    <td className="cell-sub">{fmtDateTime(t.timestamp)}</td>
                     <td>
                       <div>{t.channel}</div>
                       <div className="cell-sub" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>{t.tpe}</div>
@@ -281,19 +280,14 @@ export default function TransactionsPage() {
               })}
             </tbody>
           </table>
-          {filtered.length === 0 && (
+          {rows === undefined && <Loading />}
+          {rows !== undefined && filtered.length === 0 && (
             <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
               Aucun mouvement ne correspond aux filtres.
             </div>
           )}
           <div className="table-foot">
             <span>{filtered.length} sur {TX_FULL.length} mouvements</span>
-            <div className="pager">
-              <button className="btn ghost sm" disabled>‹ Précédent</button>
-              <span className="page-num on">1</span>
-              <span className="page-num">2</span>
-              <button className="btn ghost sm">Suivant ›</button>
-            </div>
           </div>
         </div>
       </div>

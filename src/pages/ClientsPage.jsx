@@ -1,24 +1,20 @@
 import { useState, useMemo } from 'react'
+import { useQuery } from 'convex/react'
+import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { fmt, KPI, PageHeader, SearchInput } from '../components'
-import { CLIENTS, CLIENT_KPIS, CLIENT_TX } from '../data'
+import { fmt, fmtDateTime, initials, relTime, KPI, Loading, PageHeader } from '../components'
 import Novu from '../components/Inbox'
 
 function ClientDrawer({ client, onClose }) {
+  const history = useQuery(api.admin.customerHistory, client ? { customerId: client.id } : "skip")
   if (!client) return null
-  const history = CLIENT_TX[client.id] || [
-    { type: "in",  label: "Dépôt",   amount: 10000, time: "il y a 3 j" },
-    { type: "out", label: "Retrait", amount: 5000,  time: "il y a 8 j" },
-    { type: "in",  label: "Dépôt",   amount: 15000, time: "il y a 14 j" },
-  ]
-  const pct = Math.min(100, Math.round((client.balance / client.goal) * 100))
   return (
     <>
       <div className="drawer-scrim" onClick={onClose}/>
       <aside className="drawer">
         <div className="drawer-head">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div className="avatar lg">{client.initials}</div>
+            <div className="avatar lg">{initials(client.name)}</div>
             <div>
               <div style={{ fontWeight: 600, fontSize: 16, letterSpacing: "-0.015em" }}>{client.name}</div>
               <div className="cell-sub">{client.phone} · client depuis {new Date(client.joined).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</div>
@@ -30,43 +26,34 @@ function ClientDrawer({ client, onClose }) {
         <div className="drawer-body">
           <div className="stat-grid">
             <div className="stat"><div className="cell-sub">Solde courant</div><div className="stat-v">{fmt(client.balance)} <span className="u">FCFA</span></div></div>
-            <div className="stat"><div className="cell-sub">Objectif</div><div className="stat-v">{fmt(client.goal)} <span className="u">FCFA</span></div></div>
-            <div className="stat"><div className="cell-sub">Moy. mensuelle</div><div className="stat-v">{fmt(client.monthlyAvg)} <span className="u">FCFA</span></div></div>
+            <div className="stat"><div className="cell-sub">Ce mois</div><div className="stat-v">{fmt(client.monthlyAvg)} <span className="u">FCFA</span></div></div>
             <div className="stat"><div className="cell-sub">Transactions</div><div className="stat-v">{client.txCount}</div></div>
-          </div>
-
-          <div className="drawer-section">
-            <div className="card-title" style={{ marginBottom: 8 }}>Progression de l'objectif</div>
-            <div className="goal-bar"><div className="goal-fill" style={{ width: pct + "%" }}/></div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 12, color: "var(--ink-3)" }}>
-              <span>{pct}% atteint</span>
-              <span>Reste {fmt(Math.max(0, client.goal - client.balance))} FCFA</span>
-            </div>
           </div>
 
           <div className="drawer-section">
             <div className="card-title" style={{ marginBottom: 8 }}>Détails</div>
             <dl className="info-list">
               <dt>Statut</dt><dd><span className={"tag " + (client.status === "actif" ? "actif" : client.status === "archive" ? "archive" : "attente")}>{client.status === "actif" ? "Actif" : client.status === "archive" ? "Archivé" : "En attente"}</span></dd>
-              <dt>Produit</dt><dd>{client.product}</dd>
-              <dt>Village</dt><dd>{client.village}</dd>
+              <dt>Pièce d'identité</dt><dd style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{client.idNumber}</dd>
+              <dt>Agence</dt><dd>{client.branch}</dd>
               <dt>Agent référent</dt><dd>{client.agent}</dd>
-              <dt>Dernier mouvement</dt><dd>{client.lastTx}</dd>
+              <dt>Dernier mouvement</dt><dd>{relTime(client.lastTx)}</dd>
             </dl>
           </div>
 
           <div className="drawer-section">
             <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
               <div className="card-title">Historique récent</div>
-              <span className="card-action" style={{ marginLeft: "auto" }}>Tout voir <I.Arrow size={12}/></span>
-            </div>
+                          </div>
             <div className="tx-list" style={{ padding: 0 }}>
-              {history.map((t, i) => (
+              {history === undefined && <Loading />}
+              {history && history.length === 0 && <div className="cell-sub" style={{ padding: 12 }}>Aucun mouvement</div>}
+              {(history ?? []).map((t, i) => (
                 <div key={i} className="tx-row">
                   <div className={"tx-icon " + t.type}>{t.type === "in" ? <I.ArrowDown size={14}/> : <I.ArrowUp size={14}/>}</div>
                   <div>
-                    <div className="tx-name">{t.label}</div>
-                    <div className="tx-time">{t.time}</div>
+                    <div className="tx-name">{t.label}{t.status === "annulée" ? " (annulé)" : ""}</div>
+                    <div className="tx-time">{fmtDateTime(t.timestamp)} · {t.agent}</div>
                   </div>
                   <div className={"tx-amount " + t.type}>{t.type === "in" ? "+" : "−"}{fmt(t.amount)}<span className="u">FCFA</span></div>
                 </div>
@@ -96,7 +83,10 @@ export default function ClientsPage() {
   const [openClient, setOpenClient] = useState(null)
   const [online, setOnline] = useState(true)
 
-  const agents = useMemo(() => ["tous", ...Array.from(new Set(CLIENTS.map(c => c.agent)))], [])
+  const rows = useQuery(api.admin.listCustomers)
+  const CLIENTS = rows ?? []
+
+  const agents = useMemo(() => ["tous", ...Array.from(new Set(CLIENTS.map(c => c.agent)))], [rows])
 
   const filtered = useMemo(() => {
     let r = CLIENTS.filter(c => {
@@ -111,7 +101,7 @@ export default function ClientsPage() {
       return sortDir === "asc" ? cmp : -cmp
     })
     return r
-  }, [q, seg, agent, sortBy, sortDir])
+  }, [rows, q, seg, agent, sortBy, sortDir])
 
   const toggleSort = (col) => {
     if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc")
@@ -146,7 +136,13 @@ export default function ClientsPage() {
     else setSelected(new Set(filtered.map(c => c.id)))
   }
 
-  const [commandPaletteActive, setCommandPaletteActive] = useState(false)
+  const sumBalance = CLIENTS.reduce((s, c) => s + c.balance, 0)
+  const CLIENT_KPIS = [
+    { label: "Clients (total)", value: String(counts.tous),    unit: "",     delta: String(counts.tous),    dir: "up", note: "fiches",              icon: "users" },
+    { label: "Actifs",          value: String(counts.actif),   unit: "",     delta: counts.tous ? Math.round(counts.actif / counts.tous * 100) + "%" : "—", dir: "up", note: "du portefeuille", icon: "users" },
+    { label: "Solde moyen",     value: fmt(counts.tous ? Math.round(sumBalance / counts.tous) : 0), unit: "FCFA", delta: fmt(sumBalance), dir: "up", note: "FCFA cumulés", icon: "wallet" },
+    { label: "En attente KYC",  value: String(counts.attente), unit: "",     delta: String(counts.archive), dir: counts.archive ? "down" : "up", note: "rejetés", icon: "shield" },
+  ]
 
   return (
     <div className="clients-page">
@@ -215,9 +211,9 @@ export default function ClientsPage() {
                   <th style={{ width: 36 }}><input type="checkbox" checked={allOn} onChange={toggleAll} /></th>
                   <SortHead col="name">Client</SortHead>
                   <SortHead col="village">Village</SortHead>
-                  <SortHead col="product">Produit</SortHead>
+                  <SortHead col="branch">Agence</SortHead>
                   <SortHead col="balance" align="right">Solde</SortHead>
-                  <SortHead col="monthlyAvg" align="right">Moy. mens.</SortHead>
+                  <SortHead col="monthlyAvg" align="right">Ce mois</SortHead>
                   <SortHead col="txCount" align="right">Mvts</SortHead>
                   <SortHead col="agent">Agent</SortHead>
                   <SortHead col="status">Statut</SortHead>
@@ -232,7 +228,7 @@ export default function ClientsPage() {
                     </td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div className="avatar sm">{c.initials}</div>
+                        <div className="avatar sm">{initials(c.name)}</div>
                         <div>
                           <div style={{ fontWeight: 550 }}>{c.name}</div>
                           <div className="cell-sub">{c.phone}</div>
@@ -240,7 +236,7 @@ export default function ClientsPage() {
                       </div>
                     </td>
                     <td>{c.village}</td>
-                    <td><span className="chip">{c.product}</span></td>
+                    <td><span className="chip">{c.branch}</span></td>
                     <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 550 }}>
                       {fmt(c.balance)}<span className="cell-sub" style={{ marginLeft: 4 }}>FCFA</span>
                     </td>
@@ -259,20 +255,14 @@ export default function ClientsPage() {
                 ))}
               </tbody>
             </table>
-            {filtered.length === 0 && (
+            {rows === undefined && <Loading />}
+            {rows !== undefined && filtered.length === 0 && (
               <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
                 Aucun client ne correspond aux filtres.
               </div>
             )}
             <div className="table-foot">
               <span>Affichage de {filtered.length} sur {CLIENTS.length} clients</span>
-              <div className="pager">
-                <button className="btn ghost sm" disabled>‹ Précédent</button>
-                <span className="page-num on">1</span>
-                <span className="page-num">2</span>
-                <span className="page-num">3</span>
-                <button className="btn ghost sm">Suivant ›</button>
-              </div>
             </div>
           </div>
         ) : (
@@ -280,7 +270,7 @@ export default function ClientsPage() {
             {filtered.map(c => (
               <div key={c.id} className="client-card" onClick={() => setOpenClient(c)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div className="avatar lg">{c.initials}</div>
+                  <div className="avatar lg">{initials(c.name)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>{c.name}</div>
                     <div className="cell-sub">{c.phone}</div>
@@ -295,15 +285,12 @@ export default function ClientsPage() {
                     <div style={{ fontWeight: 600, fontSize: 16, fontVariantNumeric: "tabular-nums" }}>{fmt(c.balance)} <span style={{ fontSize: 11, color: "var(--ink-3)" }}>FCFA</span></div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div className="cell-sub">Objectif</div>
-                    <div style={{ fontWeight: 550, fontVariantNumeric: "tabular-nums" }}>{Math.round((c.balance / c.goal) * 100)}%</div>
+                    <div className="cell-sub">Dernier mvt</div>
+                    <div style={{ fontWeight: 550 }}>{relTime(c.lastTx)}</div>
                   </div>
                 </div>
-                <div className="goal-bar" style={{ marginTop: 8 }}>
-                  <div className="goal-fill" style={{ width: Math.min(100, (c.balance / c.goal) * 100) + "%" }}/>
-                </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 11.5, color: "var(--ink-3)" }}>
-                  <span>{c.village} · {c.product}</span>
+                  <span>{c.village} · {c.agent}</span>
                   <span>{c.txCount} mvts</span>
                 </div>
               </div>
