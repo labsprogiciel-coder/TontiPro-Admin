@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { authz } from "./authz";
+import { requireUser } from "./users";
 
 export const settleDailyCash = mutation({
   args: {
@@ -9,9 +10,8 @@ export const settleDailyCash = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
-    await authz.require(ctx, identity.subject, "reconciliation:liquidate");
+    const verifier = await requireUser(ctx);
+    await authz.require(ctx, verifier._id, "reconciliation:liquidate");
 
     const today = new Date().toISOString().split('T')[0];
     const dayStart = Date.parse(today + "T00:00:00Z");
@@ -41,12 +41,6 @@ export const settleDailyCash = mutation({
     const status = variance === 0 ? "settled" : "discrepancy";
 
     // 4. Create the reconciliation record
-    const verifier = await ctx.db
-      .query("users")
-      .withIndex("by_token", (q) => q.eq("tokenIdentifier", identity.subject))
-      .unique();
-    if (!verifier) throw new Error("User not found");
-
     if (!transactions[0]) throw new Error("No transactions found for agent today");
 
     const reconciliationId = await ctx.db.insert("reconciliations", {

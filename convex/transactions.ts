@@ -2,6 +2,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { authz } from "./authz";
+import { requireUser } from "./users";
 
 export const collectCash = mutation({
   args: {
@@ -11,15 +12,8 @@ export const collectCash = mutation({
     currency: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
-    await authz.require(ctx, identity.subject, "transactions:collect");
-
-    const agent = await ctx.db
-      .query("users")
-      .withIndex("by_token", (q) => q.eq("tokenIdentifier", identity.subject))
-      .unique();
-    if (!agent) throw new Error("Agent not found");
+    const agent = await requireUser(ctx);
+    await authz.require(ctx, agent._id, "transactions:collect");
 
     const device = await ctx.db
       .query("devices")
@@ -45,14 +39,8 @@ export const collectCash = mutation({
 export const reverseTransaction = mutation({
   args: { transactionId: v.id("transactions"), reason: v.string() },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
-    await authz.require(ctx, identity.subject, "transactions:reverse");
-
-    const supervisor = await ctx.db
-      .query("users")
-      .withIndex("by_token", (q) => q.eq("tokenIdentifier", identity.subject))
-      .unique();
+    const supervisor = await requireUser(ctx);
+    await authz.require(ctx, supervisor._id, "transactions:reverse");
 
     const tx = await ctx.db.get(args.transactionId);
     if (!tx) throw new Error("Transaction not found");
@@ -72,7 +60,7 @@ export const reverseTransaction = mutation({
     return await ctx.db.patch(args.transactionId, {
       status: "reversed",
       reversalReason: args.reason,
-      reversedBy: supervisor?._id,
+      reversedBy: supervisor._id,
     });
   },
 });
@@ -80,7 +68,7 @@ export const reverseTransaction = mutation({
 export const listByAgent = query({
   args: { agentId: v.id("users") },
   handler: async (ctx, args) => {
-    if (!(await ctx.auth.getUserIdentity())) throw new Error("Unauthenticated");
+    await requireUser(ctx);
     return ctx.db
       .query("transactions")
       .withIndex("by_agent_date", (q) => q.eq("agentId", args.agentId))
@@ -92,7 +80,7 @@ export const listByAgent = query({
 export const listByBranch = query({
   args: { branchId: v.id("branches") },
   handler: async (ctx, args) => {
-    if (!(await ctx.auth.getUserIdentity())) throw new Error("Unauthenticated");
+    await requireUser(ctx);
     return ctx.db
       .query("transactions")
       .withIndex("by_branch", (q) => q.eq("branchId", args.branchId))

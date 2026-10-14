@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Sidebar } from './components'
+import { Authenticated, AuthLoading, Unauthenticated } from 'convex/react'
+import { Loading, Sidebar } from './components'
+import LoginPage from './pages/LoginPage'
 import AppCommandPalette from './components/CommandPalette'
 import DashboardPage from './pages/DashboardPage'
 import ClientsPage from './pages/ClientsPage'
@@ -22,6 +24,16 @@ const PAGES = {
 }
 
 export default function App() {
+  return (
+    <>
+      <AuthLoading><Loading /></AuthLoading>
+      <Unauthenticated><LoginPage /></Unauthenticated>
+      <Authenticated><Shell /></Authenticated>
+    </>
+  )
+}
+
+function Shell() {
   const [active, setActive] = useState('dashboard')
   const Page = PAGES[active] ?? DashboardPage
 

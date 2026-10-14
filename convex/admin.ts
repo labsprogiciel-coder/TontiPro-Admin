@@ -3,20 +3,13 @@ import { v } from "convex/values";
 import { query, QueryCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { authz } from "./authz";
+import { requireUser } from "./users";
 
 const DAY = 86_400_000;
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 
-// Admin reads require a signed-in user. Until an auth provider is configured,
-// a dev deployment can opt in to anonymous reads with:
-//   npx convex env set ADMIN_ALLOW_ANONYMOUS true
-// Never set this on a production deployment.
-async function requireViewer(ctx: QueryCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity) return identity;
-  if (process.env.ADMIN_ALLOW_ANONYMOUS === "true") return null;
-  throw new Error("Unauthenticated");
-}
+// Admin reads require a signed-in, active staff member.
+const requireViewer = requireUser;
 
 function startOfMonth(now: number) {
   const d = new Date(now);
@@ -250,8 +243,8 @@ export const listAgents = query({
         let roles: string[] = [];
         let canCollect = false;
         try {
-          roles = (await authz.getUserRoles(ctx, u.tokenIdentifier)).map((r) => r.role);
-          canCollect = await authz.can(ctx, u.tokenIdentifier, "transactions:collect");
+          roles = (await authz.getUserRoles(ctx, u._id)).map((r) => r.role);
+          canCollect = await authz.can(ctx, u._id, "transactions:collect");
         } catch {
           // Role lookup is informative only; ignore component errors
         }
