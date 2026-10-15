@@ -47,7 +47,7 @@ export async function assignedDevice(ctx: QueryCtx, userId: Id<"users">) {
 }
 
 /**
- * The signed-in staff member for the UI: `null` when signed out, `{ active: false }` when suspended, otherwise profile, roles, bound `device` and `can` flags. The flags are UI hints only; every mutation checks its own permission.
+ * The signed-in staff member for the dashboard and the mobile app: `null` when signed out, `{ active: false }` when suspended, otherwise profile (incl. `branchId`, `phoneNumber`, `organization`), roles, bound `device` and `can` flags. The flags are UI hints only; every mutation checks its own permission.
  */
 export const me = query({
   args: {},
@@ -69,12 +69,16 @@ export const me = query({
       can("devices:bind"),
       can("staff:manage"),
     ]);
+    const organization = branch ? await ctx.db.get(branch.organizationId) : null;
     return {
       id: user._id,
       active: true as const,
       name: user.fullName,
       email: user.email,
+      phoneNumber: user.phoneNumber,
+      branchId: user.branchId,
       branch: branch?.name ?? null,
+      organization: organization ? { name: organization.name, currency: organization.currency } : null,
       roles: roles.map((r) => r.role),
       device,
       // UI hints only: every mutation re-checks its own permission
