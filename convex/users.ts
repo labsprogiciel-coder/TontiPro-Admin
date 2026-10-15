@@ -69,6 +69,25 @@ export const me = query({
   },
 });
 
+/**
+ * Rebuild every user's permissions from the current role definitions in
+ * authz.ts. convex-authz stores a copy of a role's permissions when the role is
+ * assigned, so a permission added to a role later (e.g. staff:manage on
+ * it_admin) only reaches existing users after this runs. Run it after each
+ * deploy that changes defineRoles():
+ *   npx convex run users:syncRolePermissions
+ */
+export const syncRolePermissions = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Per user rather than authz.syncRoles(): that pages inside the component,
+    // which Convex doesn't support. Staff count is small enough for one pass.
+    const users = await ctx.db.query("users").collect();
+    for (const user of users) await authz.recomputeUser(ctx, user._id);
+    return { usersProcessed: users.length };
+  },
+});
+
 /** Bootstrap / admin tool: npx convex run users:assignRole '{"email":"…","role":"it_admin"}' */
 export const assignRole = internalMutation({
   args: { email: v.string(), role: ROLE },
