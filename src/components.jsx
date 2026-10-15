@@ -59,6 +59,10 @@ const ERROR_MESSAGES = {
   INVALID_PHONE:     "Numéro de téléphone invalide.",
   PHONE_TAKEN:       "Ce numéro de téléphone est déjà utilisé.",
   INVALID_ID_NUMBER: "Numéro de pièce d'identité trop long.",
+  INVALID_AMOUNT:    "Montant invalide.",
+  CUSTOMER_NOT_FOUND: "Client introuvable dans cette agence.",
+  NO_DEVICE:         "Aucun TPE actif n'est lié à cet agent.",
+  DAY_CLOSED:        "La caisse du jour est déjà clôturée.",
 }
 const ERROR_PATTERNS = [
   [/Unauthenticated|session/i,                  "Session expirée. Reconnectez-vous."],
