@@ -4,6 +4,7 @@ import { useAuthActions } from '@convex-dev/auth/react'
 import { api } from '../convex/_generated/api'
 import { openCommandPalette } from './components/CommandPalette'
 import { I } from './icons'
+import { canOpenPage } from './access'
 
 /** Format a number with French thousands separators. */
 export function fmt(n) {
@@ -173,6 +174,7 @@ const ROLE_LABELS = {
 export function Sidebar({ active, setActive }) {
   const me = useQuery(api.users.me)
   const { signOut } = useAuthActions()
+  const allowed = (it) => canOpenPage(it.id, me?.can)
   const items = [
     { group: "Principal", entries: [
       { id: "dashboard", label: "Tableau de bord", icon: <I.Grid /> },
@@ -186,7 +188,7 @@ export function Sidebar({ active, setActive }) {
       { id: "agents",      label: "Agents",      icon: <I.Users /> },
       { id: "settings",    label: "Paramètres",  icon: <I.Settings /> },
     ]},
-  ]
+  ].map(g => ({ ...g, entries: g.entries.filter(allowed) })).filter(g => g.entries.length > 0)
   return (
     <aside className="sidebar">
       <div className="brand">

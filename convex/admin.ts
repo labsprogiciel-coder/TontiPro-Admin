@@ -1,5 +1,5 @@
 // convex/admin.ts — read models for the back-office dashboard
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { query, QueryCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { authz } from "./authz";
@@ -9,8 +9,37 @@ import { requireUser } from "./users";
 const DAY = 86_400_000;
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 
-// Admin reads require a signed-in, active staff member.
-const requireViewer = requireUser;
+/** The branch a read is limited to, or null for every branch. */
+type Scope = Id<"branches"> | null;
+
+/**
+ * Customer and money reads are for the back office: they need
+ * transactions:audit (supervisor, accountant) and cover the caller's branch
+ * only. Anyone else (field agents, IT admins) gets FORBIDDEN.
+ */
+async function requireAuditor(ctx: QueryCtx): Promise<Id<"branches">> {
+  const user = await requireUser(ctx);
+  if (!(await authz.can(ctx, user._id, "transactions:audit"))) {
+    throw new ConvexError("FORBIDDEN");
+  }
+  return user.branchId;
+}
+
+/**
+ * The staff and TPE lists (Agents page): IT admins (staff:manage or
+ * devices:bind) see every branch, auditors their own branch, others nothing.
+ */
+async function requireStaffViewer(ctx: QueryCtx): Promise<Scope> {
+  const user = await requireUser(ctx);
+  const [manage, bind, audit] = await Promise.all([
+    authz.can(ctx, user._id, "staff:manage"),
+    authz.can(ctx, user._id, "devices:bind"),
+    authz.can(ctx, user._id, "transactions:audit"),
+  ]);
+  if (manage || bind) return null;
+  if (audit) return user.branchId;
+  throw new ConvexError("FORBIDDEN");
+}
 
 /** UTC timestamp of the first day of `now`'s month. */
 function startOfMonth(now: number) {
@@ -43,17 +72,28 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 /**
- * Load every customer, user, branch, transaction and disbursement for the read models below.
+ * Load the customers, users, branches, transactions and disbursements of one
+ * branch (or of every branch for a null scope) for the read models below.
  */
-async function loadAll(ctx: QueryCtx) {
-  const [customers, users, branches, transactions, disbursements] = await Promise.all([
-    ctx.db.query("customers").collect(),
-    ctx.db.query("users").collect(),
-    ctx.db.query("branches").collect(),
-    ctx.db.query("transactions").collect(),
-    ctx.db.query("disbursements").collect(),
+async function loadAll(ctx: QueryCtx, scope: Scope) {
+  if (scope === null) {
+    const [customers, users, branches, transactions, disbursements] = await Promise.all([
+      ctx.db.query("customers").collect(),
+      ctx.db.query("users").collect(),
+      ctx.db.query("branches").collect(),
+      ctx.db.query("transactions").collect(),
+      ctx.db.query("disbursements").collect(),
+    ]);
+    return { customers, users, branches, transactions, disbursements };
+  }
+  const [customers, users, branch, transactions, disbursements] = await Promise.all([
+    ctx.db.query("customers").withIndex("by_branch", (q) => q.eq("branchId", scope)).collect(),
+    ctx.db.query("users").filter((q) => q.eq(q.field("branchId"), scope)).collect(),
+    ctx.db.get(scope),
+    ctx.db.query("transactions").withIndex("by_branch", (q) => q.eq("branchId", scope)).collect(),
+    ctx.db.query("disbursements").filter((q) => q.eq(q.field("branchId"), scope)).collect(),
   ]);
-  return { customers, users, branches, transactions, disbursements };
+  return { customers, users, branches: branch ? [branch] : [], transactions, disbursements };
 }
 
 type Ledger = Awaited<ReturnType<typeof loadAll>>;
@@ -154,9 +194,9 @@ function movementRows(data: Ledger) {
 export const dashboard = query({
   args: {},
   handler: async (ctx) => {
-    await requireViewer(ctx);
+    const branchId = await requireAuditor(ctx);
     const now = Date.now();
-    const data = await loadAll(ctx);
+    const data = await loadAll(ctx, branchId);
     const monthStart = startOfMonth(now);
     const prevMonthStart = startOfMonth(monthStart - 1);
 
@@ -213,48 +253,51 @@ export const dashboard = query({
   },
 });
 
-/** Every customer with balances and activity for the Clients page. */
+/** The branch's customers with balances and activity for the Clients page. */
 export const listCustomers = query({
   args: {},
   handler: async (ctx) => {
-    await requireViewer(ctx);
-    const data = await loadAll(ctx);
+    const data = await loadAll(ctx, await requireAuditor(ctx));
     return customerRows(data, Date.now());
   },
 });
 
-/** The 10 most recent movements of one customer. */
+/** The 10 most recent movements of one customer of the caller's branch. */
 export const customerHistory = query({
   args: { customerId: v.id("customers") },
   handler: async (ctx, args) => {
-    await requireViewer(ctx);
-    const data = await loadAll(ctx);
+    const branchId = await requireAuditor(ctx);
+    const customer = await ctx.db.get(args.customerId);
+    if (!customer || customer.branchId !== branchId) throw new ConvexError("FORBIDDEN");
+    const data = await loadAll(ctx, branchId);
     return movementRows(data)
       .filter((m) => m.customerId === args.customerId)
       .slice(0, 10);
   },
 });
 
-/** All movements, optionally only those since `since`. */
+/** The branch's movements, optionally only those since `since`. */
 export const listMovements = query({
   args: { since: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    await requireViewer(ctx);
-    const data = await loadAll(ctx);
+    const data = await loadAll(ctx, await requireAuditor(ctx));
     const rows = movementRows(data);
     return args.since ? rows.filter((r) => r.timestamp >= args.since!) : rows;
   },
 });
 
-/** Staff with role, branch, assigned TPE and this month's collections for the Agents page. */
+/**
+ * Staff with role, branch, assigned TPE and this month's collections for the
+ * Agents page: every branch for IT admins, the caller's branch for auditors.
+ */
 export const listAgents = query({
   args: {},
   handler: async (ctx) => {
-    await requireViewer(ctx);
+    const scope = await requireStaffViewer(ctx);
     const now = Date.now();
     const monthStart = startOfMonth(now);
     const [data, devices] = await Promise.all([
-      loadAll(ctx),
+      loadAll(ctx, scope),
       ctx.db.query("devices").collect(),
     ]);
     const branches = byId(data.branches);
@@ -298,17 +341,24 @@ export const listAgents = query({
   },
 });
 
-/** Return the device fleet with assignee and last binding actor names for an authorized viewer. */
+/**
+ * The TPE fleet with assignee and last binding actor names: every device for
+ * IT admins, the devices bound to the branch's staff for auditors.
+ */
 export const listDevices = query({
   args: {},
   handler: async (ctx) => {
-    await requireViewer(ctx);
+    const scope = await requireStaffViewer(ctx);
     const [devices, users] = await Promise.all([
       ctx.db.query("devices").collect(),
       ctx.db.query("users").collect(),
     ]);
     const usersById = byId(users);
-    return devices.map((d) => ({
+    const visible =
+      scope === null
+        ? devices
+        : devices.filter((d) => d.assignedTo && usersById.get(d.assignedTo)?.branchId === scope);
+    return visible.map((d) => ({
       serial: d.serialNumber,
       model: d.model,
       status: d.status,
@@ -321,15 +371,19 @@ export const listDevices = query({
   },
 });
 
-/** Recorded end-of-day reconciliations with the day's collection count and TPE. */
+/** The branch's end-of-day reconciliations with the day's collection count and TPE. */
 export const listReconciliations = query({
   args: {},
   handler: async (ctx) => {
-    await requireViewer(ctx);
+    const branchId = await requireAuditor(ctx);
     const [recs, users, transactions, devices] = await Promise.all([
-      ctx.db.query("reconciliations").order("desc").collect(),
+      ctx.db
+        .query("reconciliations")
+        .order("desc")
+        .filter((q) => q.eq(q.field("branchId"), branchId))
+        .collect(),
       ctx.db.query("users").collect(),
-      ctx.db.query("transactions").collect(),
+      ctx.db.query("transactions").withIndex("by_branch", (q) => q.eq("branchId", branchId)).collect(),
       ctx.db.query("devices").collect(),
     ]);
     const usersById = byId(users);
@@ -364,19 +418,20 @@ export const listReconciliations = query({
 });
 
 /**
- * Agents with completed collections today and no reconciliation yet — candidates for the end-of-day cash drop.
+ * The branch's agents with completed collections today and no reconciliation yet — candidates for the end-of-day cash drop.
  */
 export const openSessions = query({
   args: {},
   handler: async (ctx) => {
-    await requireViewer(ctx);
+    const branchId = await requireAuditor(ctx);
     const now = Date.now();
     const today = new Date(now).toISOString().split("T")[0];
     const dayStart = startOfDay(now);
     const [users, transactions, devices] = await Promise.all([
-      ctx.db.query("users").collect(),
+      ctx.db.query("users").filter((q) => q.eq(q.field("branchId"), branchId)).collect(),
       ctx.db
         .query("transactions")
+        .withIndex("by_branch", (q) => q.eq("branchId", branchId))
         .filter((q) => q.gte(q.field("timestamp"), dayStart))
         .collect(),
       ctx.db.query("devices").collect(),

@@ -1,13 +1,14 @@
 import "react-cmdk/dist/cmdk.css"
 import CommandPalette, { filterItems, getItemIndex, useHandleOpenCommandPalette } from "react-cmdk"
 import { useState, useEffect } from "react"
+import { canOpenPage } from "../access"
 
 let _setOpen = null
 /** Open the command palette from anywhere (e.g. the top bar button). */
 export function openCommandPalette() { _setOpen?.(true) }
 
 /** ⌘K command palette for navigating between pages. */
-export default function AppCommandPalette({ setActive }) {
+export default function AppCommandPalette({ setActive, can }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
 
@@ -28,7 +29,7 @@ export default function AppCommandPalette({ setActive }) {
           { id: "reconciliation", children: "Réconciliation", icon: "CalculatorIcon",       onClick: () => setActive("reconciliation") },
           { id: "agents",    children: "Agents & TPE",     icon: "DevicePhoneMobileIcon", onClick: () => setActive("agents") },
           { id: "settings",  children: "Paramètres",       icon: "CogIcon",               onClick: () => setActive("settings") },
-        ],
+        ].filter((it) => canOpenPage(it.id, can)),
       },
     ],
     search
