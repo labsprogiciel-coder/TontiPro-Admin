@@ -69,6 +69,25 @@ export const me = query({
   },
 });
 
+/**
+ * Rebuild every user's permissions from the current role definitions in
+ * authz.ts. convex-authz stores a copy of a role's permissions when the role is
+ * assigned, so a permission added to a role later (e.g. staff:manage on
+ * it_admin) only reaches existing users after this runs. Run it after each
+ * deploy that changes defineRoles():
+ *   npx convex run users:syncRolePermissions
+ */
+export const syncRolePermissions = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Per user rather than authz.syncRoles(): that pages inside the component,
+    // which Convex doesn't support. Staff count is small enough for one pass.
+    const users = await ctx.db.query("users").collect();
+    for (const user of users) await authz.recomputeUser(ctx, user._id);
+    return { usersProcessed: users.length };
+  },
+});
+
 /** Bootstrap / admin tool: npx convex run users:assignRole '{"email":"…","role":"it_admin"}' */
 export const assignRole = internalMutation({
   args: { email: v.string(), role: ROLE },
@@ -84,7 +103,7 @@ export const assignRole = internalMutation({
 });
 
 /**
- * Issue the one-time code a staff member needs for "Première connexion", from the CLI. Re-issuing replaces the previous code. Only the hash is stored.
+ * Issue a one-time code from the CLI: for "Première connexion" if the account has no password yet, otherwise for "Mot de passe oublié". Re-issuing replaces the previous code. Only the hash is stored.
  *   npx convex run users:issueActivationCode '{"email":"…"}'
  */
 export const issueActivationCode = internalMutation({
@@ -100,7 +119,7 @@ export const issueActivationCode = internalMutation({
 });
 
 /**
- * Generate a 48h activation code for an active user and store its hash. Returns the plain code and its expiry. Shared by the CLI mutation above and `staff.issueActivationCode` (UI).
+ * Generate a 48h activation code for an active user and store its hash. Returns the plain code and its expiry. Shared by the CLI mutation above and `staff.issueActivationCode` / `staff.issueResetCode` (UI).
  */
 export async function createActivationCode(ctx: MutationCtx, user: Doc<"users">) {
   if (user.status !== "active") throw new Error("Account suspended");

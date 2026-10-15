@@ -53,6 +53,7 @@ const ERROR_MESSAGES = {
   BRANCH_NOT_FOUND:  "Agence introuvable.",
   EMAIL_TAKEN:       "Un membre du personnel utilise déjà cet email.",
   ALREADY_ACTIVATED: "Ce compte est déjà activé.",
+  NOT_ACTIVATED:     "Ce compte n'a pas encore de mot de passe : générez un code d'activation.",
   SUSPENDED:         "Ce compte est suspendu.",
 }
 const ERROR_PATTERNS = [
