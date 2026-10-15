@@ -1,5 +1,5 @@
 // convex/transactions.ts
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { authz } from "./authz";
 import { requireUser } from "./users";
@@ -65,10 +65,23 @@ export const reverseTransaction = mutation({
   },
 });
 
+/**
+ * An agent's transactions, newest first. Agents may read their own history;
+ * reading someone else's needs transactions:audit (supervisor, accountant)
+ * and is limited to agents of the caller's branch.
+ */
 export const listByAgent = query({
   args: { agentId: v.id("users") },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const caller = await requireUser(ctx);
+    if (args.agentId !== caller._id) {
+      const agent = await ctx.db.get(args.agentId);
+      const allowed =
+        agent !== null &&
+        agent.branchId === caller.branchId &&
+        (await authz.can(ctx, caller._id, "transactions:audit"));
+      if (!allowed) throw new ConvexError("FORBIDDEN");
+    }
     return ctx.db
       .query("transactions")
       .withIndex("by_agent_date", (q) => q.eq("agentId", args.agentId))
@@ -77,10 +90,20 @@ export const listByAgent = query({
   },
 });
 
+/**
+ * A branch's transactions, newest first. Needs transactions:audit and is
+ * limited to the caller's own branch.
+ */
 export const listByBranch = query({
   args: { branchId: v.id("branches") },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const caller = await requireUser(ctx);
+    if (
+      args.branchId !== caller.branchId ||
+      !(await authz.can(ctx, caller._id, "transactions:audit"))
+    ) {
+      throw new ConvexError("FORBIDDEN");
+    }
     return ctx.db
       .query("transactions")
       .withIndex("by_branch", (q) => q.eq("branchId", args.branchId))

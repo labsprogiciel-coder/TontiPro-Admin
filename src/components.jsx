@@ -55,6 +55,7 @@ const ERROR_MESSAGES = {
   ALREADY_ACTIVATED: "Ce compte est déjà activé.",
   NOT_ACTIVATED:     "Ce compte n'a pas encore de mot de passe : générez un code d'activation.",
   SUSPENDED:         "Ce compte est suspendu.",
+  FORBIDDEN:         "Vous n'avez pas l'autorisation pour cette action.",
 }
 const ERROR_PATTERNS = [
   [/Unauthenticated|session/i,                  "Session expirée. Reconnectez-vous."],
