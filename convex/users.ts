@@ -16,12 +16,15 @@ const ACTIVATION_TTL_MS = 48 * 60 * 60 * 1000;
 // No 0/O/1/I so codes survive being read out over the phone
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+/** SHA-256 hex digest of an activation code, the only form in which codes are stored. */
 export async function hashActivationCode(code: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code));
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// The signed-in, active staff member. Authz user IDs are users._id.
+/**
+ * Return the signed-in, active staff member; throw if unauthenticated, missing or suspended. Authz user IDs are `users._id`.
+ */
 export async function requireUser(ctx: QueryCtx) {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new Error("Unauthenticated");
@@ -31,6 +34,9 @@ export async function requireUser(ctx: QueryCtx) {
   return user;
 }
 
+/**
+ * The signed-in staff member for the UI: `null` when signed out, `{ active: false }` when suspended, otherwise profile, roles and `can` flags. The flags are UI hints only; every mutation checks its own permission.
+ */
 export const me = query({
   args: {},
   handler: async (ctx) => {
@@ -63,7 +69,7 @@ export const me = query({
   },
 });
 
-// Bootstrap / admin tool: npx convex run users:assignRole '{"email":"…","role":"it_admin"}'
+/** Bootstrap / admin tool: npx convex run users:assignRole '{"email":"…","role":"it_admin"}' */
 export const assignRole = internalMutation({
   args: { email: v.string(), role: ROLE },
   handler: async (ctx, args) => {
@@ -77,9 +83,10 @@ export const assignRole = internalMutation({
   },
 });
 
-// Issue the one-time code a staff member needs for "Première connexion".
-// Re-issuing replaces the previous code. Only the hash is stored.
-//   npx convex run users:issueActivationCode '{"email":"…"}'
+/**
+ * Issue the one-time code a staff member needs for "Première connexion", from the CLI. Re-issuing replaces the previous code. Only the hash is stored.
+ *   npx convex run users:issueActivationCode '{"email":"…"}'
+ */
 export const issueActivationCode = internalMutation({
   args: { email: v.string() },
   handler: async (ctx, args) => {
@@ -92,7 +99,9 @@ export const issueActivationCode = internalMutation({
   },
 });
 
-// Shared by the CLI mutation above and staff.issueActivationCode (UI)
+/**
+ * Generate a 48h activation code for an active user and store its hash. Returns the plain code and its expiry. Shared by the CLI mutation above and `staff.issueActivationCode` (UI).
+ */
 export async function createActivationCode(ctx: MutationCtx, user: Doc<"users">) {
   if (user.status !== "active") throw new Error("Account suspended");
   const bytes = crypto.getRandomValues(new Uint8Array(8));

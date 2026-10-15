@@ -3,8 +3,10 @@ import CommandPalette, { filterItems, getItemIndex, useHandleOpenCommandPalette 
 import { useState, useEffect } from "react"
 
 let _setOpen = null
+/** Open the command palette from anywhere (e.g. the top bar button). */
 export function openCommandPalette() { _setOpen?.(true) }
 
+/** ⌘K command palette for navigating between pages. */
 export default function AppCommandPalette({ setActive }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")

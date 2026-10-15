@@ -7,12 +7,16 @@ import { createActivationCode, requireUser, ROLE } from "./users";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Return the signed-in staff member if they hold `staff:manage`; throw otherwise. */
 async function requireStaffAdmin(ctx: QueryCtx) {
   const actor = await requireUser(ctx);
   await authz.require(ctx, actor._id, "staff:manage");
   return actor;
 }
 
+/**
+ * Load the staff member being changed. Throws `SELF_CHANGE` so an admin can't lock themselves out (own role or status), and `NOT_FOUND` if the user doesn't exist.
+ */
 async function getTarget(ctx: QueryCtx, actorId: Id<"users">, userId: Id<"users">) {
   // Guard against an admin locking themselves out (own role or status)
   if (userId === actorId) throw new ConvexError("SELF_CHANGE");
@@ -21,6 +25,7 @@ async function getTarget(ctx: QueryCtx, actorId: Id<"users">, userId: Id<"users"
   return user;
 }
 
+/** List branches (id, name) for the new-staff form. Any signed-in staff member may read it. */
 export const listBranches = query({
   args: {},
   handler: async (ctx) => {
@@ -30,7 +35,9 @@ export const listBranches = query({
   },
 });
 
-// Admin-only detail for the staff drawer: roles, login state, pending code
+/**
+ * Admin-only detail for the staff drawer: profile, roles, whether a password is set, the pending activation code's expiry, and whether it's the caller's own account.
+ */
 export const get = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
@@ -61,6 +68,9 @@ export const get = query({
   },
 });
 
+/**
+ * Create a staff member with one role. Validates the input and rejects a duplicate email (case-insensitive). Returns the new user ID; the account is activated later with a code from `issueActivationCode`.
+ */
 export const create = mutation({
   args: {
     fullName: v.string(),
@@ -92,6 +102,7 @@ export const create = mutation({
   },
 });
 
+/** Replace a staff member's roles with `role`. Refused on the caller's own account. */
 export const setRole = mutation({
   args: { userId: v.id("users"), role: ROLE },
   handler: async (ctx, args) => {
@@ -102,6 +113,9 @@ export const setRole = mutation({
   },
 });
 
+/**
+ * Delete every auth session of `userId` and its refresh tokens, signing them out on all devices.
+ */
 async function endSessions(ctx: MutationCtx, userId: Id<"users">) {
   const sessions = await ctx.db
     .query("authSessions")
@@ -117,6 +131,9 @@ async function endSessions(ctx: MutationCtx, userId: Id<"users">) {
   }
 }
 
+/**
+ * Suspend or reactivate a staff member. Suspending signs them out everywhere and voids any pending activation code. Refused on the caller's own account.
+ */
 export const setStatus = mutation({
   args: { userId: v.id("users"), status: v.union(v.literal("active"), v.literal("suspended")) },
   handler: async (ctx, args) => {
@@ -134,7 +151,9 @@ export const setStatus = mutation({
   },
 });
 
-// Returns the plain code once; only its hash is stored
+/**
+ * Issue a new one-time activation code, replacing any pending one. Returns the plain code once; only its hash is stored. Refused for activated or suspended accounts.
+ */
 export const issueActivationCode = mutation({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {

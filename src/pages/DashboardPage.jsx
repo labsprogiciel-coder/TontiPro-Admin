@@ -7,11 +7,13 @@ import {
 } from '../components'
 import Novu from '../components/Inbox'
 
+/** "Bonjour" before 18:00, "Bonsoir" after. */
 function greeting() {
   const h = new Date().getHours()
   return h < 18 ? "Bonjour" : "Bonsoir"
 }
 
+/** Back-office dashboard: KPIs, volume chart, quick actions, recent clients and movements. */
 export default function DashboardPage() {
   const data = useQuery(api.admin.dashboard)
 

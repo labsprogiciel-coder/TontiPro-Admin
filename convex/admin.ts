@@ -11,16 +11,19 @@ const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep",
 // Admin reads require a signed-in, active staff member.
 const requireViewer = requireUser;
 
+/** UTC timestamp of the first day of `now`'s month. */
 function startOfMonth(now: number) {
   const d = new Date(now);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
 }
 
+/** UTC timestamp of midnight on `now`'s day. */
 function startOfDay(now: number) {
   const d = new Date(now);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
+/** Index rows by `_id` for lookups. */
 function byId<T extends { _id: string }>(rows: T[]) {
   return new Map(rows.map((r) => [r._id as string, r]));
 }
@@ -38,6 +41,9 @@ const ROLE_LABELS: Record<string, string> = {
   it_admin: "Admin IT",
 };
 
+/**
+ * Load every customer, user, branch, transaction and disbursement for the read models below.
+ */
 async function loadAll(ctx: QueryCtx) {
   const [customers, users, branches, transactions, disbursements] = await Promise.all([
     ctx.db.query("customers").collect(),
@@ -51,6 +57,9 @@ async function loadAll(ctx: QueryCtx) {
 
 type Ledger = Awaited<ReturnType<typeof loadAll>>;
 
+/**
+ * Customer list rows with balance, transaction count, this month's deposits, last activity, onboarding agent and branch.
+ */
 function customerRows(data: Ledger, now: number) {
   const users = byId(data.users);
   const branches = byId(data.branches);
@@ -87,6 +96,7 @@ function customerRows(data: Ledger, now: number) {
   });
 }
 
+/** Collections and disbursements merged into one movement list, newest first. */
 function movementRows(data: Ledger) {
   const customers = byId(data.customers);
   const users = byId(data.users);
@@ -136,6 +146,7 @@ function movementRows(data: Ledger) {
   return [...collections, ...payouts].sort((a, b) => b.timestamp - a.timestamp);
 }
 
+/** Dashboard KPIs, six-month volume, the five most recently active clients and the latest movements. */
 export const dashboard = query({
   args: {},
   handler: async (ctx) => {
@@ -192,6 +203,7 @@ export const dashboard = query({
   },
 });
 
+/** Every customer with balances and activity for the Clients page. */
 export const listCustomers = query({
   args: {},
   handler: async (ctx) => {
@@ -201,6 +213,7 @@ export const listCustomers = query({
   },
 });
 
+/** The 10 most recent movements of one customer. */
 export const customerHistory = query({
   args: { customerId: v.id("customers") },
   handler: async (ctx, args) => {
@@ -212,6 +225,7 @@ export const customerHistory = query({
   },
 });
 
+/** All movements, optionally only those since `since`. */
 export const listMovements = query({
   args: { since: v.optional(v.number()) },
   handler: async (ctx, args) => {
@@ -222,6 +236,7 @@ export const listMovements = query({
   },
 });
 
+/** Staff with role, branch, assigned TPE and this month's collections for the Agents page. */
 export const listAgents = query({
   args: {},
   handler: async (ctx) => {
@@ -296,6 +311,7 @@ export const listDevices = query({
   },
 });
 
+/** Recorded end-of-day reconciliations with the day's collection count and TPE. */
 export const listReconciliations = query({
   args: {},
   handler: async (ctx) => {
@@ -337,8 +353,9 @@ export const listReconciliations = query({
   },
 });
 
-// Agents with completed collections today and no reconciliation yet —
-// candidates for the end-of-day cash drop.
+/**
+ * Agents with completed collections today and no reconciliation yet — candidates for the end-of-day cash drop.
+ */
 export const openSessions = query({
   args: {},
   handler: async (ctx) => {

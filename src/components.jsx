@@ -5,14 +5,17 @@ import { api } from '../convex/_generated/api'
 import { openCommandPalette } from './components/CommandPalette'
 import { I } from './icons'
 
+/** Format a number with French thousands separators. */
 export function fmt(n) {
   return n.toLocaleString("fr-FR").replace(/,/g, " ")
 }
 
+/** Up to two uppercase initials from a name. */
 export function initials(name = "") {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("")
 }
 
+/** Relative French time ("il y a 5 min", "hier") for a timestamp. */
 export function relTime(ts) {
   if (!ts) return "—"
   const diff = Date.now() - ts
@@ -26,6 +29,7 @@ export function relTime(ts) {
   return `il y a ${d} j`
 }
 
+/** French date and time, using "Aujourd'hui" / "Hier" for recent days. */
 export function fmtDateTime(ts) {
   if (!ts) return "—"
   const d = new Date(ts)
@@ -65,6 +69,9 @@ const ERROR_PATTERNS = [
   [/No transactions found/i,                     "Aucune collecte aujourd'hui pour cet agent."],
   [/cannot approve your own/i,                   "Vous ne pouvez pas approuver votre propre demande."],
 ]
+/**
+ * French message for a server error: known ConvexError codes and server messages are mapped, anything else gets a generic message.
+ */
 export function errorMessage(e) {
   if (typeof e?.data === "string" && ERROR_MESSAGES[e.data]) return ERROR_MESSAGES[e.data]
   const text = String(e?.data ?? e?.message ?? "")
@@ -72,10 +79,12 @@ export function errorMessage(e) {
   return "Une erreur est survenue. Réessayez ou contactez l'Admin IT."
 }
 
+/** Inline loading placeholder. */
 export function Loading({ label = "Chargement…" }) {
   return <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>{label}</div>
 }
 
+/** Search field with icon, controlled by `value` / `onChange`. */
 export function SearchInput({ placeholder, value, onChange, width = 240 }) {
   return (
     <div className="search" style={{ width }}>
@@ -85,7 +94,10 @@ export function SearchInput({ placeholder, value, onChange, width = 240 }) {
   )
 }
 
-// crumbs: string[] — segments after "Kauri", e.g. ["Admin", "Agents & TPE"]
+/**
+ * Page top bar with breadcrumbs, title, optional `sub` line and actions (`children`).
+ * crumbs: string[] — segments after "Kauri", e.g. ["Admin", "Agents & TPE"]
+ */
 export function PageHeader({ crumbs = [], title, sub, children }) {
   const allCrumbs = title ? [...crumbs, title] : crumbs
   return (
@@ -114,6 +126,7 @@ export function PageHeader({ crumbs = [], title, sub, children }) {
   )
 }
 
+/** Small inline trend line for KPI cards. */
 export function Sparkline({ data, color = "var(--brand)" }) {
   if (!data || !data.length) return null
   const w = 86, h = 32, max = Math.max(...data), min = Math.min(...data)
@@ -146,6 +159,7 @@ const ROLE_LABELS = {
   it_admin:    "Admin IT",
 }
 
+/** Main navigation, with the signed-in staff member and sign-out in the footer. */
 export function Sidebar({ active, setActive }) {
   const me = useQuery(api.users.me)
   const { signOut } = useAuthActions()
@@ -199,6 +213,7 @@ export function Sidebar({ active, setActive }) {
   )
 }
 
+/** Dashboard top bar with the ⌘K search trigger and an optional inbox. */
 export function Topbar({ inbox }) {
   return (
     <div className="topbar">
@@ -215,6 +230,7 @@ export function Topbar({ inbox }) {
   )
 }
 
+/** One KPI card: label, value, delta and sparkline. */
 export function KPI({ k }) {
   const Ic = { users: I.Users, wallet: I.Wallet, receipt: I.Receipt, coin: I.Coin }[k.icon]
   return (
@@ -233,6 +249,7 @@ export function KPI({ k }) {
   )
 }
 
+/** Dashboard card with the most recently active clients and an inline search. */
 export function ClientsCard({ clients }) {
   const [q, setQ] = useState("")
   const filtered = useMemo(() =>
@@ -276,6 +293,7 @@ export function ClientsCard({ clients }) {
   )
 }
 
+/** Dashboard card listing the latest movements. */
 export function TransactionsCard({ tx }) {
   return (
     <div className="card">
@@ -306,6 +324,7 @@ export function TransactionsCard({ tx }) {
   )
 }
 
+/** Monthly deposits vs withdrawals bar chart, in thousands of FCFA. */
 export function VolumeChart({ data }) {
   const [range, setRange] = useState("6m")
   const w = 540, h = 200, pad = { l: 28, r: 12, t: 16, b: 26 }
@@ -362,6 +381,7 @@ export function VolumeChart({ data }) {
   )
 }
 
+/** Dashboard card with savings goal progress. */
 export function GoalsCard({ goals }) {
   return (
     <div className="card">
@@ -390,6 +410,7 @@ export function GoalsCard({ goals }) {
   )
 }
 
+/** Dashboard activity feed. */
 export function ActivityCard({ feed }) {
   return (
     <div className="card">
@@ -415,6 +436,7 @@ export function ActivityCard({ feed }) {
   )
 }
 
+/** Dashboard shortcut buttons. */
 export function QuickActionsCard() {
   const actions = [
     { ic: <I.Plus />,    label: "Dépôt rapide",   sub: "Carnet d'épargne" },

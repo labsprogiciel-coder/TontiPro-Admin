@@ -10,8 +10,10 @@ export const ROLE_OPTIONS = [
   { value: "accountant",  label: "Comptable" },
   { value: "it_admin",    label: "Admin IT" },
 ]
+/** French label for a role key. */
 const roleLabel = (r) => ROLE_OPTIONS.find(o => o.value === r)?.label ?? r
 
+/** Side drawer shell with title, scrim and optional footer. */
 function Drawer({ title, sub, onClose, children, foot }) {
   return (
     <>
@@ -31,7 +33,9 @@ function Drawer({ title, sub, onClose, children, foot }) {
   )
 }
 
-// Create a staff row + role. Activation happens next, from the staff drawer.
+/**
+ * Create a staff row and role. Activation happens next, from the staff drawer. Calls `onCreated(userId)` on success.
+ */
 export function NewStaffDrawer({ onClose, onCreated }) {
   const branches = useQuery(api.staff.listBranches)
   const create   = useMutation(api.staff.create)
@@ -88,7 +92,9 @@ export function NewStaffDrawer({ onClose, onCreated }) {
   )
 }
 
-// Role, activation code and suspension for one staff member
+/**
+ * Role, activation code and suspension for one staff member. Controls are disabled on the admin's own account.
+ */
 export function StaffDrawer({ userId, onClose }) {
   const staff     = useQuery(api.staff.get, { userId })
   const setRole   = useMutation(api.staff.setRole)

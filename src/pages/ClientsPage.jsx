@@ -5,6 +5,7 @@ import { I } from '../icons'
 import { fmt, fmtDateTime, initials, relTime, KPI, Loading, PageHeader, SearchInput } from '../components'
 import Novu from '../components/Inbox'
 
+/** Client detail drawer with profile and recent movements. */
 function ClientDrawer({ client, onClose }) {
   const history = useQuery(api.admin.customerHistory, client ? { customerId: client.id } : "skip")
   if (!client) return null
@@ -72,6 +73,7 @@ function ClientDrawer({ client, onClose }) {
   )
 }
 
+/** Client list with status and agent filters, sorting, search, table/card views and the detail drawer. */
 export default function ClientsPage() {
   const [q, setQ] = useState("")
   const [seg, setSeg] = useState("tous")

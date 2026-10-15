@@ -21,6 +21,7 @@ const STATUS_LABEL = { active: "actif", suspended: "suspendu" }
 
 const DEVICE_STALE_MS = 60 * 60 * 1000
 
+/** Device health tag: maintenance, lost, stale sync (over an hour) or up to date. */
 function SyncTag({ d }) {
   if (d.status === "maintenance") return <span className="tag attente">Maintenance</span>
   if (d.status === "lost")        return <span className="tag archive">Perdu</span>

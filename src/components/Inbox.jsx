@@ -2,7 +2,9 @@ import { Inbox } from '@novu/react'
 import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 
-// One Novu subscriber per staff member (their Convex users._id)
+/**
+ * Novu notification inbox for the signed-in staff member, one subscriber per `users._id`. Renders nothing until an active user is loaded.
+ */
 function Novu() {
   const me = useQuery(api.users.me)
   if (!me?.active) return null

@@ -13,6 +13,7 @@ const STATUS_STYLE = {
   "annulée":    { cls: "archive", label: "Annulée"    },
 }
 
+/** Movement detail drawer. Approve and reverse actions only show when `can` allows them. */
 function TxDrawer({ tx, onClose, can }) {
   const st = STATUS_STYLE[tx.status]
   const reverse = useMutation(api.transactions.reverseTransaction)
@@ -106,6 +107,7 @@ function TxDrawer({ tx, onClose, can }) {
   )
 }
 
+/** Movements list with period, type, channel and agent filters, search, totals and the detail drawer. */
 export default function TransactionsPage() {
   const [q, setQ] = useState("")
   const [seg, setSeg] = useState("tous")
