@@ -30,6 +30,9 @@ const permissions = definePermissions({
   },
   devices: {
     bind: true,        // Linking a specific TPE serial number to an agent
+  },
+  staff: {
+    manage: true,      // Create staff, change roles, suspend, issue activation codes
   }
 });
 
@@ -69,6 +72,7 @@ const roles = defineRoles(permissions, {
   // System management
   it_admin: {
     devices: ["bind"],
+    staff: ["manage"],
     // Usually IT shouldn't have 'collect' or 'reverse' permissions (Separation of Duties)
   },
 });

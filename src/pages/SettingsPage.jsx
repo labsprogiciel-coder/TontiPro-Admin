@@ -4,6 +4,7 @@ import { PageHeader } from '../components'
 import Novu from '../components/Inbox'
 
 
+/** Settings section card with title and optional subtitle. */
 function SetCard({ title, sub, children }) {
   return (
     <div className="card">
@@ -16,6 +17,7 @@ function SetCard({ title, sub, children }) {
   )
 }
 
+/** Labelled form field. */
 function Field({ label, sub, children }) {
   return (
     <div className="field">
@@ -25,6 +27,7 @@ function Field({ label, sub, children }) {
   )
 }
 
+/** Labelled on/off switch row. */
 function Toggle({ label, sub, value, onChange }) {
   return (
     <div className="toggle-row" onClick={() => onChange(!value)}>
@@ -37,6 +40,7 @@ function Toggle({ label, sub, value, onChange }) {
   )
 }
 
+/** Settings sections (local state only, not persisted yet). */
 export default function SettingsPage() {
   const [section, setSection] = useState("agence")
   const [orgName, setOrgName] = useState("Kauri Microfinance")
@@ -47,7 +51,6 @@ export default function SettingsPage() {
   const [bgSync, setBgSync] = useState(true)
   const [offlineDays, setOfflineDays] = useState(3)
   const [isEditing, setIsEditing] = useState(false)
-  const [online, setOnline] = useState(true)
   const sections = [
     { k: "agence",        label: "Agence",       icon: <I.Pin/> },
     { k: "tpe",           label: "Terminaux TPE", icon: <I.Wifi/> },
@@ -71,9 +74,6 @@ export default function SettingsPage() {
           </>
         ) : (
           <>
-          <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
-            <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
-          </button>
           <Novu />
           </>
         )}

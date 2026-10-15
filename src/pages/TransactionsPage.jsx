@@ -3,7 +3,7 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import Novu from '../components/Inbox'
-import { fmt, fmtDateTime, initials, Loading, PageHeader } from '../components'
+import { errorMessage, fmt, fmtDateTime, initials, Loading, PageHeader, SearchInput } from '../components'
 
 const PERIODS = { "24h": 1, "7j": 7, "30j": 30, "Tout": null }
 
@@ -13,23 +13,25 @@ const STATUS_STYLE = {
   "annulée":    { cls: "archive", label: "Annulée"    },
 }
 
-function TxDrawer({ tx, onClose }) {
+/** Movement detail drawer. Approve and reverse actions only show when `can` allows them. */
+function TxDrawer({ tx, onClose, can }) {
   const st = STATUS_STYLE[tx.status]
   const reverse = useMutation(api.transactions.reverseTransaction)
   const approve = useMutation(api.disbursements.approveDisbursement)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [reversing, setReversing] = useState(false)
+  const [reason, setReason] = useState("")
 
   const run = async (fn) => {
     setBusy(true); setError(null)
     try { await fn(); onClose() }
-    catch (e) { setError(e.data ?? e.message) }
+    catch (e) { setError(errorMessage(e)) }
     finally { setBusy(false) }
   }
-  const onReverse = () => {
-    const reason = window.prompt("Motif de l'annulation")
-    if (reason) run(() => reverse({ transactionId: tx.id, reason }))
-  }
+  const onReverse = () => run(() => reverse({ transactionId: tx.id, reason: reason.trim() }))
+  const canApprove = can.approve && tx.kind === "disbursement" && tx.status === "en attente"
+  const canReverse = can.reverse && tx.kind === "transaction" && tx.status === "validée"
   const onApprove = () => run(() => approve({ disbursementId: tx.id }))
   return (
     <>
@@ -75,20 +77,37 @@ function TxDrawer({ tx, onClose }) {
             </dl>
           </div>
 
+          {reversing && (
+            <div className="drawer-section">
+              <label className="field">
+                <span className="field-label">Motif de l'annulation</span>
+                <textarea className="input" rows={3} autoFocus value={reason} onChange={e => setReason(e.target.value)}
+                  placeholder="Ex. erreur de montant saisi" />
+              </label>
+              <div className="cell-sub" style={{ marginTop: 6 }}>L'annulation est définitive et tracée à votre nom.</div>
+            </div>
+          )}
           {error && (
-            <div className="drawer-section" style={{ color: "var(--neg)", fontSize: 13 }}>{String(error)}</div>
+            <div className="drawer-section" role="alert" style={{ color: "var(--neg)", fontSize: 13 }}>{error}</div>
           )}
         </div>
         <div className="drawer-foot">
           <button className="btn"><I.Export size={14}/>Reçu PDF</button>
-          {tx.kind === "disbursement" && tx.status === "en attente" && <button className="btn brand" style={{ marginLeft: "auto" }} disabled={busy} onClick={onApprove}><I.Check size={14} stroke="white"/>Approuver</button>}
-          {tx.kind === "transaction" && tx.status === "validée" && <button className="btn" style={{ marginLeft: "auto", color: "var(--neg)" }} disabled={busy} onClick={onReverse}>Annuler</button>}
+          {canApprove && <button className="btn brand" style={{ marginLeft: "auto" }} disabled={busy} onClick={onApprove}><I.Check size={14} stroke="white"/>Approuver</button>}
+          {canReverse && !reversing && <button className="btn" style={{ marginLeft: "auto", color: "var(--neg)" }} onClick={() => setReversing(true)}>Annuler la transaction</button>}
+          {canReverse && reversing && (
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <button className="btn" disabled={busy} onClick={() => { setReversing(false); setReason("") }}>Retour</button>
+              <button className="btn" style={{ color: "var(--neg)" }} disabled={busy || !reason.trim()} onClick={onReverse}>Confirmer l'annulation</button>
+            </div>
+          )}
         </div>
       </aside>
     </>
   )
 }
 
+/** Movements list with period, type, channel and agent filters, search, totals and the detail drawer. */
 export default function TransactionsPage() {
   const [q, setQ] = useState("")
   const [seg, setSeg] = useState("tous")
@@ -96,7 +115,8 @@ export default function TransactionsPage() {
   const [agent, setAgent] = useState("tous")
   const [period, setPeriod] = useState("7j")
   const [selected, setSelected] = useState(null)
-  const [online, setOnline] = useState(true)
+  const me  = useQuery(api.users.me)
+  const can = me?.can ?? {}
 
   // Round the window start to the hour so the query args stay stable between renders
   const since = useMemo(() => {
@@ -153,11 +173,7 @@ export default function TransactionsPage() {
         title="Transactions"
         sub={`${TX_FULL.length} mouvements`}
       >
-        <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
-          <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
-        </button>
         <Novu />
- 
       </PageHeader>
 
       <section className="kpi-row">
@@ -178,6 +194,7 @@ export default function TransactionsPage() {
       </section>
       
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <SearchInput placeholder="Client, ID, TPE…" value={q} onChange={e => setQ(e.target.value)} />
         <div className="seg">
           {["24h","7j","30j","Tout"].map(p => (
             <button key={p} className={period === p ? "on" : ""} onClick={() => setPeriod(p)}>{p}</button>
@@ -292,7 +309,7 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {selected && <TxDrawer tx={selected} onClose={() => setSelected(null)}/>}
+      {selected && <TxDrawer key={selected.id} tx={selected} can={can} onClose={() => setSelected(null)}/>}
     </div>
   )
 }

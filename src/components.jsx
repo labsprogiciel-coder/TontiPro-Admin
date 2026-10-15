@@ -5,14 +5,17 @@ import { api } from '../convex/_generated/api'
 import { openCommandPalette } from './components/CommandPalette'
 import { I } from './icons'
 
+/** Format a number with French thousands separators. */
 export function fmt(n) {
   return n.toLocaleString("fr-FR").replace(/,/g, " ")
 }
 
+/** Up to two uppercase initials from a name. */
 export function initials(name = "") {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("")
 }
 
+/** Relative French time ("il y a 5 min", "hier") for a timestamp. */
 export function relTime(ts) {
   if (!ts) return "—"
   const diff = Date.now() - ts
@@ -26,6 +29,7 @@ export function relTime(ts) {
   return `il y a ${d} j`
 }
 
+/** French date and time, using "Aujourd'hui" / "Hier" for recent days. */
 export function fmtDateTime(ts) {
   if (!ts) return "—"
   const d = new Date(ts)
@@ -37,10 +41,50 @@ export function fmtDateTime(ts) {
   return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}, ${time}`
 }
 
+// Server errors → French. ConvexError codes pass through in production; plain
+// Error messages are matched by substring (production redacts those, hence
+// the generic fallback).
+const ERROR_MESSAGES = {
+  SELF_CHANGE:       "Vous ne pouvez pas modifier votre propre compte.",
+  NOT_FOUND:         "Membre du personnel introuvable.",
+  NAME_REQUIRED:     "Le nom est obligatoire.",
+  INVALID_EMAIL:     "Adresse email invalide.",
+  PHONE_REQUIRED:    "Le téléphone est obligatoire.",
+  BRANCH_NOT_FOUND:  "Agence introuvable.",
+  EMAIL_TAKEN:       "Un membre du personnel utilise déjà cet email.",
+  ALREADY_ACTIVATED: "Ce compte est déjà activé.",
+  SUSPENDED:         "Ce compte est suspendu.",
+}
+const ERROR_PATTERNS = [
+  [/Unauthenticated|session/i,                  "Session expirée. Reconnectez-vous."],
+  [/suspended/i,                                 "Compte suspendu."],
+  [/permission|not authorized|forbidden|denied/i, "Vous n'avez pas l'autorisation pour cette action."],
+  [/TPE not bound/i,                             "Ce TPE n'est pas lié à cet agent."],
+  [/Only field agents and supervisors/i,         "Seuls les agents terrain et superviseurs peuvent recevoir un TPE."],
+  [/already bound/i,                             "Ce TPE est déjà lié à un autre agent : déliez-le d'abord."],
+  [/Agent already has/i,                         "Cet agent a déjà un TPE : déliez-le d'abord."],
+  [/only active devices/i,                       "Seuls les TPE actifs peuvent être liés."],
+  [/Already reversed/i,                          "Transaction déjà annulée."],
+  [/daily cash already settled|already reconciled/i, "La caisse du jour est déjà clôturée."],
+  [/No transactions found/i,                     "Aucune collecte aujourd'hui pour cet agent."],
+  [/cannot approve your own/i,                   "Vous ne pouvez pas approuver votre propre demande."],
+]
+/**
+ * French message for a server error: known ConvexError codes and server messages are mapped, anything else gets a generic message.
+ */
+export function errorMessage(e) {
+  if (typeof e?.data === "string" && ERROR_MESSAGES[e.data]) return ERROR_MESSAGES[e.data]
+  const text = String(e?.data ?? e?.message ?? "")
+  for (const [re, msg] of ERROR_PATTERNS) if (re.test(text)) return msg
+  return "Une erreur est survenue. Réessayez ou contactez l'Admin IT."
+}
+
+/** Inline loading placeholder. */
 export function Loading({ label = "Chargement…" }) {
   return <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>{label}</div>
 }
 
+/** Search field with icon, controlled by `value` / `onChange`. */
 export function SearchInput({ placeholder, value, onChange, width = 240 }) {
   return (
     <div className="search" style={{ width }}>
@@ -50,11 +94,14 @@ export function SearchInput({ placeholder, value, onChange, width = 240 }) {
   )
 }
 
-// crumbs: string[] — segments after "Kauri", e.g. ["Admin", "Agents & TPE"]
-export function PageHeader({ crumbs = [], title, children }) {
+/**
+ * Page top bar with breadcrumbs, title, optional `sub` line and actions (`children`).
+ * crumbs: string[] — segments after "Kauri", e.g. ["Admin", "Agents & TPE"]
+ */
+export function PageHeader({ crumbs = [], title, sub, children }) {
   const allCrumbs = title ? [...crumbs, title] : crumbs
-  const [safemode, setSafeMode] = useState(true)
   return (
+    <>
     <header className="topbar">
       <div className="crumbs">
         <strong>Kauri</strong>
@@ -71,15 +118,15 @@ export function PageHeader({ crumbs = [], title, children }) {
         </button>
       </div>
       <div className="topbar-right">
-        <button className={"safemode-pill" + (safemode ? "" : " off")} onClick={() => setSafeMode(!safemode)}>
-          <span className="safemode-dot"></span>{safemode ? "Safe Mode · actif" : "Safe Mode · inactif"}
-        </button>
         {children}
       </div>
     </header>
+    {sub && <div className="h1-sub" style={{ margin: "-6px 0 14px" }}>{sub}</div>}
+    </>
   )
 }
 
+/** Small inline trend line for KPI cards. */
 export function Sparkline({ data, color = "var(--brand)" }) {
   if (!data || !data.length) return null
   const w = 86, h = 32, max = Math.max(...data), min = Math.min(...data)
@@ -112,6 +159,7 @@ const ROLE_LABELS = {
   it_admin:    "Admin IT",
 }
 
+/** Main navigation, with the signed-in staff member and sign-out in the footer. */
 export function Sidebar({ active, setActive }) {
   const me = useQuery(api.users.me)
   const { signOut } = useAuthActions()
@@ -124,13 +172,8 @@ export function Sidebar({ active, setActive }) {
       { id: "produits",       label: "Produits",        icon: <I.Wallet /> },
       { id: "reconciliation", label: "Réconciliation",  icon: <I.Coin /> },
     ]},
-    { group: "Rapports", entries: [
-      { id: "analyses", label: "Analyses",  icon: <I.Chart /> },
-      { id: "export",   label: "Export CSV", icon: <I.Export /> },
-    ]},
     { group: "Admin", entries: [
       { id: "agents",      label: "Agents",      icon: <I.Users /> },
-      { id: "permissions", label: "Permissions", icon: <I.Shield /> },
       { id: "settings",    label: "Paramètres",  icon: <I.Settings /> },
     ]},
   ]
@@ -170,7 +213,8 @@ export function Sidebar({ active, setActive }) {
   )
 }
 
-export function Topbar({ online, setOnline, inbox }) {
+/** Dashboard top bar with the ⌘K search trigger and an optional inbox. */
+export function Topbar({ inbox }) {
   return (
     <div className="topbar">
       <div className="crumbs"><strong>Kauri</strong> &nbsp;/&nbsp; Tableau de bord</div>
@@ -180,15 +224,13 @@ export function Topbar({ online, setOnline, inbox }) {
         </button>
       </div>
       <div className="topbar-right">
-        <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
-          <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
-        </button>
         {inbox}
       </div>
     </div>
   )
 }
 
+/** One KPI card: label, value, delta and sparkline. */
 export function KPI({ k }) {
   const Ic = { users: I.Users, wallet: I.Wallet, receipt: I.Receipt, coin: I.Coin }[k.icon]
   return (
@@ -207,6 +249,7 @@ export function KPI({ k }) {
   )
 }
 
+/** Dashboard card with the most recently active clients and an inline search. */
 export function ClientsCard({ clients }) {
   const [q, setQ] = useState("")
   const filtered = useMemo(() =>
@@ -250,6 +293,7 @@ export function ClientsCard({ clients }) {
   )
 }
 
+/** Dashboard card listing the latest movements. */
 export function TransactionsCard({ tx }) {
   return (
     <div className="card">
@@ -280,6 +324,7 @@ export function TransactionsCard({ tx }) {
   )
 }
 
+/** Monthly deposits vs withdrawals bar chart, in thousands of FCFA. */
 export function VolumeChart({ data }) {
   const [range, setRange] = useState("6m")
   const w = 540, h = 200, pad = { l: 28, r: 12, t: 16, b: 26 }
@@ -336,6 +381,7 @@ export function VolumeChart({ data }) {
   )
 }
 
+/** Dashboard card with savings goal progress. */
 export function GoalsCard({ goals }) {
   return (
     <div className="card">
@@ -364,6 +410,7 @@ export function GoalsCard({ goals }) {
   )
 }
 
+/** Dashboard activity feed. */
 export function ActivityCard({ feed }) {
   return (
     <div className="card">
@@ -389,6 +436,7 @@ export function ActivityCard({ feed }) {
   )
 }
 
+/** Dashboard shortcut buttons. */
 export function QuickActionsCard() {
   const actions = [
     { ic: <I.Plus />,    label: "Dépôt rapide",   sub: "Carnet d'épargne" },

@@ -1,0 +1,221 @@
+import { useState } from 'react'
+import { useMutation, useQuery } from 'convex/react'
+import { api } from '../../convex/_generated/api'
+import { I } from '../icons'
+import { errorMessage, initials, Loading } from '../components'
+
+export const ROLE_OPTIONS = [
+  { value: "field_agent", label: "Agent terrain" },
+  { value: "supervisor",  label: "Superviseur" },
+  { value: "accountant",  label: "Comptable" },
+  { value: "it_admin",    label: "Admin IT" },
+]
+/** French label for a role key. */
+const roleLabel = (r) => ROLE_OPTIONS.find(o => o.value === r)?.label ?? r
+
+/** Side drawer shell with title, scrim and optional footer. */
+function Drawer({ title, sub, onClose, children, foot }) {
+  return (
+    <>
+      <div className="drawer-scrim" onClick={onClose}/>
+      <aside className="drawer" role="dialog" aria-label={title}>
+        <div className="drawer-head">
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 18, letterSpacing: "-0.015em" }}>{title}</div>
+            {sub && <div className="cell-sub" style={{ marginTop: 2 }}>{sub}</div>}
+          </div>
+          <button className="btn ghost sm" onClick={onClose} style={{ padding: 6 }} aria-label="Fermer">✕</button>
+        </div>
+        <div className="drawer-body">{children}</div>
+        {foot && <div className="drawer-foot">{foot}</div>}
+      </aside>
+    </>
+  )
+}
+
+/**
+ * Create a staff row and role. Activation happens next, from the staff drawer. Calls `onCreated(userId)` on success.
+ */
+export function NewStaffDrawer({ onClose, onCreated }) {
+  const branches = useQuery(api.staff.listBranches)
+  const create   = useMutation(api.staff.create)
+  const [form, setForm]   = useState({ fullName: "", email: "", phoneNumber: "", branchId: "", role: "field_agent" })
+  const [busy, setBusy]   = useState(false)
+  const [error, setError] = useState(null)
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const onSubmit = async (e) => {
+    e.preventDefault()
+    setBusy(true); setError(null)
+    try { onCreated(await create(form)) }
+    catch (err) { setError(errorMessage(err)) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <Drawer title="Nouveau membre du personnel" sub="Le compte sera activé avec un code à usage unique." onClose={onClose}>
+      <form id="new-staff" onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <label className="field">
+          <span className="field-label">Nom complet</span>
+          <input className="input" required value={form.fullName} onChange={set("fullName")} autoFocus />
+        </label>
+        <label className="field">
+          <span className="field-label">Email professionnel</span>
+          <input className="input" type="email" required value={form.email} onChange={set("email")} placeholder="prenom.nom@kauri.bf" />
+        </label>
+        <label className="field">
+          <span className="field-label">Téléphone</span>
+          <input className="input" type="tel" required value={form.phoneNumber} onChange={set("phoneNumber")} placeholder="+226 …" />
+        </label>
+        <label className="field">
+          <span className="field-label">Agence</span>
+          <select className="input" required value={form.branchId} onChange={set("branchId")}>
+            <option value="">{branches === undefined ? "Chargement…" : "Choisir une agence…"}</option>
+            {(branches ?? []).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label">Rôle</span>
+          <select className="input" value={form.role} onChange={set("role")}>
+            {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+        </label>
+        {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button type="button" className="btn" onClick={onClose}>Annuler</button>
+          <button type="submit" className="btn brand" disabled={busy}>
+            <I.Plus size={14} stroke="white"/>{busy ? "Création…" : "Créer le compte"}
+          </button>
+        </div>
+      </form>
+    </Drawer>
+  )
+}
+
+/**
+ * Role, activation code and suspension for one staff member. Controls are disabled on the admin's own account.
+ */
+export function StaffDrawer({ userId, onClose }) {
+  const staff     = useQuery(api.staff.get, { userId })
+  const setRole   = useMutation(api.staff.setRole)
+  const setStatus = useMutation(api.staff.setStatus)
+  const issueCode = useMutation(api.staff.issueActivationCode)
+  const [role, setRoleDraft] = useState(null)
+  const [issued, setIssued]  = useState(null) // { code, expiresAt }: shown once
+  const [confirmSuspend, setConfirmSuspend] = useState(false)
+  const [busy, setBusy]   = useState(false)
+  const [error, setError] = useState(null)
+  const [copied, setCopied] = useState(false)
+
+  if (staff === undefined) return <Drawer title="…" onClose={onClose}><Loading /></Drawer>
+  if (staff === null) return <Drawer title="Introuvable" onClose={onClose}><div className="cell-sub">Ce compte n'existe plus.</div></Drawer>
+
+  const currentRole = staff.roles[0] ?? ""
+  const draftRole   = role ?? currentRole
+  const suspended   = staff.status !== "active"
+  const locked      = staff.isSelf
+
+  const run = async (fn) => {
+    setBusy(true); setError(null)
+    try { await fn() } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(issued.code); setCopied(true) } catch { /* clipboard blocked */ }
+  }
+
+  return (
+    <Drawer title={staff.name} sub={`${staff.email} · ${staff.branch}`} onClose={onClose}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="avatar lg">{initials(staff.name)}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <span className={"tag " + (suspended ? "archive" : "actif")}>{suspended ? "Suspendu" : "Actif"}</span>
+          <span className={"tag " + (staff.activated ? "actif" : "attente")}>{staff.activated ? "Compte activé" : "Non activé"}</span>
+          {staff.roles.map(r => <span key={r} className="chip">{roleLabel(r)}</span>)}
+        </div>
+      </div>
+
+      {locked && (
+        <div className="cell-sub" style={{ padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8 }}>
+          C'est votre propre compte : un autre Admin IT doit modifier votre rôle ou votre statut.
+        </div>
+      )}
+
+      <div className="drawer-section">
+        <div className="card-title" style={{ marginBottom: 10 }}>Rôle</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <select className="input" value={draftRole} disabled={locked || busy}
+            onChange={e => setRoleDraft(e.target.value)}>
+            {!currentRole && <option value="">Aucun rôle</option>}
+            {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+          <button className="btn" disabled={locked || busy || !draftRole || draftRole === currentRole}
+            onClick={() => run(async () => { await setRole({ userId, role: draftRole }); setRoleDraft(null) })}>
+            Enregistrer
+          </button>
+        </div>
+      </div>
+
+      <div className="drawer-section">
+        <div className="card-title" style={{ marginBottom: 10 }}>Activation</div>
+        {staff.activated ? (
+          <div className="cell-sub">Le mot de passe a été défini. La connexion se fait avec « Se connecter ».</div>
+        ) : issued ? (
+          <div style={{ padding: 14, borderRadius: 10, background: "var(--surface-2)", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="cell-sub">Transmettez ce code à {staff.name.split(" ")[0]}. Il ne sera plus affiché.</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 24, fontWeight: 600, letterSpacing: "0.12em" }}>{issued.code}</span>
+              <button className="btn sm" onClick={copy}>{copied ? <><I.Check size={12}/>Copié</> : "Copier"}</button>
+            </div>
+            <div className="cell-sub">
+              Valable jusqu'au {new Date(issued.expiresAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })} · usage unique ·
+              écran « Première connexion »
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+            <div className="cell-sub">
+              {staff.codePendingUntil
+                ? `Un code est en attente jusqu'au ${new Date(staff.codePendingUntil).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}. En générer un nouveau annule le précédent.`
+                : "Aucun code en cours. Générez-en un pour que la personne puisse choisir son mot de passe."}
+            </div>
+            <button className="btn brand" disabled={busy || suspended}
+              onClick={() => run(async () => { setIssued(await issueCode({ userId })); setCopied(false) })}>
+              {staff.codePendingUntil ? "Générer un nouveau code" : "Générer un code d'activation"}
+            </button>
+            {suspended && <div className="cell-sub">Réactivez le compte avant de générer un code.</div>}
+          </div>
+        )}
+      </div>
+
+      <div className="drawer-section">
+        <div className="card-title" style={{ marginBottom: 10 }}>Accès</div>
+        {suspended ? (
+          <button className="btn" disabled={locked || busy}
+            onClick={() => run(() => setStatus({ userId, status: "active" }))}>
+            Réactiver le compte
+          </button>
+        ) : confirmSuspend ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 13 }}>
+              {staff.name} sera déconnecté(e) immédiatement et ne pourra plus se connecter. Un code d'activation en attente sera annulé.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn" onClick={() => setConfirmSuspend(false)} disabled={busy}>Annuler</button>
+              <button className="btn" style={{ color: "var(--neg)" }} disabled={busy}
+                onClick={() => run(async () => { await setStatus({ userId, status: "suspended" }); setConfirmSuspend(false); setIssued(null) })}>
+                Confirmer la suspension
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn" style={{ color: "var(--neg)" }} disabled={locked || busy}
+            onClick={() => setConfirmSuspend(true)}>
+            Suspendre le compte
+          </button>
+        )}
+      </div>
+
+      {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
+    </Drawer>
+  )
+}

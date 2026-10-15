@@ -7,20 +7,21 @@ import {
 } from '../components'
 import Novu from '../components/Inbox'
 
+/** "Bonjour" before 18:00, "Bonsoir" after. */
 function greeting() {
   const h = new Date().getHours()
   return h < 18 ? "Bonjour" : "Bonsoir"
 }
 
+/** Back-office dashboard: KPIs, volume chart, quick actions, recent clients and movements. */
 export default function DashboardPage() {
-  const [online, setOnline] = useState(true)
   const data = useQuery(api.admin.dashboard)
 
   const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
 
   return (
     <>
-      <Topbar online={online} setOnline={setOnline} inbox={<Novu />} />
+      <Topbar inbox={<Novu />} />
       <h1 className="h1">{greeting()}</h1>
       <div className="h1-sub mb-6" style={{ textTransform: "capitalize" }}>
         {today}{data && ` · ${data.branchCount} agences · ${data.agentCount} utilisateurs`}

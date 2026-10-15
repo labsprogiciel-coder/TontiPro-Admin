@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { fmt, initials, Loading, PageHeader } from '../components'
+import { errorMessage, fmt, initials, Loading, PageHeader } from '../components'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -33,11 +33,16 @@ const STATUS_META = {
 
 const STATUS_FROM_DB = { pending: "en cours", settled: "signée", discrepancy: "écart" }
 
+/** HH:MM in French locale. */
 const hhmm = (ts) => new Date(ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+/** "14 octobre 2026" from an ISO date. */
 const longDate = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+/** "14/10" from an ISO date. */
 const shortDate = (iso) => iso.slice(8, 10) + "/" + iso.slice(5, 7)
+/** Ledger with the whole amount in cash (other channels aren't tracked yet). */
 const ledger = (cash) => ({ cash, om: 0, moov: 0, bank: 0 })
 
+/** View model for a recorded reconciliation. */
 function fromReconciliation(r) {
   return {
     id: r.id, agentId: r.agentId, timestamp: r.timestamp,
@@ -55,6 +60,7 @@ function fromReconciliation(r) {
   }
 }
 
+/** View model for an agent's open, not yet reconciled day. */
 function fromOpenSession(o) {
   return {
     id: `open-${o.agentId}`, agentId: o.agentId, timestamp: o.opened,
@@ -73,8 +79,10 @@ const PERIOD_DAYS = { "24h": 1, "7j": 7, "30j": 30, "Tout": null }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Total across all ledger channels. */
 function sumLedger(l) { return (l.cash || 0) + (l.om || 0) + (l.moov || 0) + (l.bank || 0) }
 
+/** Counted minus expected, per channel and in total. */
 function varianceOf(r) {
   return {
     cash:  r.counted.cash  - r.expected.cash,
@@ -85,6 +93,7 @@ function varianceOf(r) {
   }
 }
 
+/** Greedy split of an amount into FCFA notes and coins, to prefill the cash count. */
 function reverseEngineer(total) {
   const out = {}
   let r = total
@@ -100,6 +109,7 @@ function reverseEngineer(total) {
 
 // ─── Page entry ───────────────────────────────────────────────────────────────
 
+/** Merge open days with recorded reconciliations; show the list or the selected one's detail. */
 export default function ReconciliationPage() {
   const [selectedId, setSelectedId] = useState(null)
   const recs = useQuery(api.admin.listReconciliations)
@@ -121,6 +131,7 @@ export default function ReconciliationPage() {
 
 // ─── Index list ───────────────────────────────────────────────────────────────
 
+/** Reconciliation list with status, agent and period filters and search. */
 function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
   const [seg, setSeg]       = useState("tous")
   const [agent, setAgent]   = useState("tous")
@@ -315,11 +326,16 @@ function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
 
 // ─── Detail wizard ────────────────────────────────────────────────────────────
 
+/**
+ * Cash count and sign-off for one reconciliation. Only users with `liquidate` can close the drawer.
+ */
 function ReconciliationDetail({ record, onBack, onDone }) {
   const initialCounts = record.status === "en cours"
     ? {}
     : reverseEngineer(record.counted.cash)
   const settle = useMutation(api.reconciliation.settleDailyCash)
+  const me = useQuery(api.users.me)
+  const canSettle = !!me?.can?.liquidate
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState(null)
 
@@ -354,7 +370,7 @@ function ReconciliationDetail({ record, onBack, onDone }) {
       const { reconciliationId } = await settle({ agentId: record.agentId, physicalAmount: totalCounted, notes: notes || undefined })
       onDone(reconciliationId)
     } catch (e) {
-      setError(e.data ?? e.message)
+      setError(errorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -568,11 +584,15 @@ function ReconciliationDetail({ record, onBack, onDone }) {
               ) : (
                 <>
                   {error && <span style={{ fontSize: 12, color: "var(--neg)" }}>{String(error)}</span>}
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                    <button className="btn brand" disabled={busy} onClick={onSettle}>
-                      <I.Check size={14} stroke="white"/>
-                      {variance.total === 0 ? "Clôturer la session" : "Soumettre l'écart"}
-                    </button>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+                    {canSettle ? (
+                      <button className="btn brand" disabled={busy} onClick={onSettle}>
+                        <I.Check size={14} stroke="white"/>
+                        {variance.total === 0 ? "Clôturer la session" : "Soumettre l'écart"}
+                      </button>
+                    ) : (
+                      <span className="cell-sub">Seul un comptable peut clôturer la caisse.</span>
+                    )}
                   </div>
                 </>
               )}
@@ -586,6 +606,7 @@ function ReconciliationDetail({ record, onBack, onDone }) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+/** One channel row of the count: expected vs counted amount. */
 function LedgerLine({ color, glyph, name, sub, expected, value, onChange, disabled }) {
   const delta = value - expected
   return (
@@ -615,6 +636,7 @@ function LedgerLine({ color, glyph, name, sub, expected, value, onChange, disabl
   )
 }
 
+/** Expected, counted and variance for one line of the summary. */
 function VarianceRow({ label, expected, counted }) {
   const delta = counted - expected
   return (

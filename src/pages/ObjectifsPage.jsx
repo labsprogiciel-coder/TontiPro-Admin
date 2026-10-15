@@ -12,6 +12,7 @@ const OBJ_STATUSES = {
   enpause:   { label: "En pause",      tagClass: "archive", dot: "oklch(0.7 0.02 70)" },
 }
 
+/** Demo savings goals derived from the sample clients (not persisted yet). */
 function buildObjectifs() {
   const base = CLIENTS.filter(c => c.status !== "attente").map((c, i) => {
     const pct      = Math.round((c.balance / c.goal) * 100)
@@ -63,12 +64,15 @@ const CATEGORIES = [
   { name: "Tontine",          count: 34, sum: 920000,  color: "oklch(0.65 0.06 70)" },
 ]
 
+/** Colour of a goal category. */
 function catColor(name) {
   return (CATEGORIES.find(c => c.name === name) || {}).color || "var(--ink-3)"
 }
 
+/** Display metadata for a goal's status. */
 function statusOf(o) { return OBJ_STATUSES[o.status] }
 
+/** Highlighted goal with remaining amount and months to completion. */
 function SpotlightCard({ o }) {
   if (!o) return null
   const reste = Math.max(0, o.target - o.current)
@@ -128,6 +132,7 @@ function SpotlightCard({ o }) {
   )
 }
 
+/** Goal count per category. */
 function CategoriesCard({ cats }) {
   const total = cats.reduce((s, c) => s + c.count, 0)
   return (
@@ -160,6 +165,7 @@ function CategoriesCard({ cats }) {
   )
 }
 
+/** Savings goals overview (demo data). */
 export default function ObjectifsPage() {
   const [q, setQ] = useState("")
   const [seg, setSeg] = useState("tous")
@@ -167,7 +173,6 @@ export default function ObjectifsPage() {
   const [agent, setAgent] = useState("tous")
   const [sortBy, setSortBy] = useState("pct")
   const [sortDir, setSortDir] = useState("desc")
-  const [online, setOnline] = useState(true)
   
   const agents = useMemo(() => ["tous",    ...Array.from(new Set(OBJECTIFS.map(o => o.agent)))],    [])
   const cats   = useMemo(() => ["toutes",  ...Array.from(new Set(OBJECTIFS.map(o => o.category)))], [])
@@ -227,9 +232,6 @@ export default function ObjectifsPage() {
         title="Objectifs d'épargne"
         sub={`${counts.tous} objectifs · ${counts.encours} en cours · ${counts.atteints} atteints sur 12 mois`}
       >
-          <button className={"status-pill" + (online ? "" : " offline")} onClick={() => setOnline(!online)}>
-          <span className="status-dot"></span>{online ? "En ligne · synchronisé" : "Hors ligne · 4 en file"}
-        </button>
         <Novu />
       </PageHeader>
 
