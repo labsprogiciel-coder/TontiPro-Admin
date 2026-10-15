@@ -79,7 +79,9 @@ export default defineSchema({
 
   // 5. CASH COLLECTIONS (Transactions)
   transactions: defineTable({
-    amount: v.number(),
+    // Missing on rows written before withdrawals existed: those are deposits
+    type: v.optional(v.union(v.literal("deposit"), v.literal("withdrawal"))),
+    amount: v.number(), // always positive; `type` gives the direction
     currency: v.string(), // e.g., "XOF"
     customerId: v.id("customers"),
     agentId: v.id("users"),
@@ -95,6 +97,7 @@ export default defineSchema({
   })
     .index("by_agent_date", ["agentId"]) // Convex appends _creationTime to every index
     .index("by_branch", ["branchId"])
+    .index("by_customer", ["customerId"])
     .index("by_client_id", ["clientId"]),
 
   // 6. DISBURSEMENTS (Maker-Checker Workflow)

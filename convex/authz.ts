@@ -7,6 +7,7 @@ import { components } from "./_generated/api";
 const permissions = definePermissions({
   transactions: {
     collect: true,     // Ability to log a new cash deposit
+    withdraw: true,    // Pay cash out of a customer's savings at the TPE
     view_ledger: true, // View personal daily collection history
     reverse: true,     // Critical: Ability to void a transaction
     audit: true,       // View all transactions across the branch
@@ -47,6 +48,7 @@ const roles = defineRoles(permissions, {
   // Field-based role
   field_agent: {
     includes: ["base_agent"],
+    transactions: ["withdraw"],
     customers: ["create_prospect"],
     disbursements: ["request"],
   },

@@ -4,6 +4,7 @@ import { Doc } from "./_generated/dataModel";
 import { mutation, query, QueryCtx } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { authz } from "./authz";
+import { isWithdrawal, signedAmount } from "./transactions";
 import { requireUser } from "./users";
 
 /** Extra KYC and collection details the app keeps on a customer. */
@@ -60,7 +61,8 @@ async function assertPhoneFree(
 
 /**
  * Customers of the caller's branch, newest first, for the mobile app. Balance
- * and last deposit are derived from completed collections, as on the dashboard.
+ * (completed deposits minus completed withdrawals) and last deposit are derived
+ * from the transactions, as on the dashboard.
  * ID numbers are not sent to the phone. Empty when signed out (the app
  * subscribes before its session resolves); FORBIDDEN for staff who neither
  * onboard nor verify customers (IT admin).
@@ -91,8 +93,10 @@ export const list = query({
     const totals = new Map<string, { balance: number; lastDeposit: number | null }>();
     for (const t of transactions) {
       const entry = totals.get(t.customerId) ?? { balance: 0, lastDeposit: null };
-      entry.balance += t.amount;
-      if (entry.lastDeposit === null || t.timestamp > entry.lastDeposit) entry.lastDeposit = t.timestamp;
+      entry.balance += signedAmount(t);
+      if (!isWithdrawal(t) && (entry.lastDeposit === null || t.timestamp > entry.lastDeposit)) {
+        entry.lastDeposit = t.timestamp;
+      }
       totals.set(t.customerId, entry);
     }
     const agentNames = new Map<string, string>();

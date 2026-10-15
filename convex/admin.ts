@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { query, QueryCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { authz } from "./authz";
+import { isWithdrawal, signedAmount } from "./transactions";
 import { requireUser } from "./users";
 
 const DAY = 86_400_000;
@@ -58,7 +59,7 @@ async function loadAll(ctx: QueryCtx) {
 type Ledger = Awaited<ReturnType<typeof loadAll>>;
 
 /**
- * Customer list rows with balance, transaction count, this month's deposits, last activity, onboarding agent and branch.
+ * Customer list rows with balance (deposits minus withdrawals), transaction count, this month's deposits, last activity, onboarding agent and branch.
  */
 function customerRows(data: Ledger, now: number) {
   const users = byId(data.users);
@@ -69,13 +70,13 @@ function customerRows(data: Ledger, now: number) {
     const txs = data.transactions.filter(
       (t) => t.customerId === c._id && t.status === "completed",
     );
-    const balance = txs.reduce((s, t) => s + t.amount, 0);
+    const balance = txs.reduce((s, t) => s + signedAmount(t), 0);
     const lastTx = txs.reduce<number | null>(
       (m, t) => (m === null || t.timestamp > m ? t.timestamp : m),
       null,
     );
     const monthTotal = txs
-      .filter((t) => t.timestamp >= monthStart)
+      .filter((t) => !isWithdrawal(t) && t.timestamp >= monthStart)
       .reduce((s, t) => s + t.amount, 0);
     const branch = branches.get(c.branchId);
     return {
@@ -96,7 +97,7 @@ function customerRows(data: Ledger, now: number) {
   });
 }
 
-/** Collections and disbursements merged into one movement list, newest first. */
+/** Deposits, withdrawals and disbursements merged into one movement list, newest first. */
 function movementRows(data: Ledger) {
   const customers = byId(data.customers);
   const users = byId(data.users);
@@ -105,8 +106,8 @@ function movementRows(data: Ledger) {
   const collections = data.transactions.map((t) => ({
     id: t._id as string,
     kind: "transaction" as const,
-    type: "in" as const,
-    label: "Dépôt",
+    type: isWithdrawal(t) ? ("out" as const) : ("in" as const),
+    label: isWithdrawal(t) ? "Retrait" : "Dépôt",
     amount: t.amount,
     timestamp: t.timestamp,
     customerId: t.customerId,
@@ -157,6 +158,8 @@ export const dashboard = query({
     const prevMonthStart = startOfMonth(monthStart - 1);
 
     const completed = data.transactions.filter((t) => t.status === "completed");
+    const deposits = completed.filter((t) => !isWithdrawal(t));
+    const withdrawals = completed.filter(isWithdrawal);
     const paidOut = data.disbursements.filter(
       (d) => d.status === "approved" || d.status === "executed",
     );
@@ -171,8 +174,12 @@ export const dashboard = query({
       const inRange = (t: number) => t >= from && t < to;
       volume.push({
         m: MONTHS[new Date(from).getUTCMonth()],
-        in: Math.round(sum(completed.filter((t) => inRange(t.timestamp))) / 1000),
-        out: Math.round(sum(paidOut.filter((p) => inRange(p.timestamp))) / 1000),
+        in: Math.round(sum(deposits.filter((t) => inRange(t.timestamp))) / 1000),
+        out: Math.round(
+          (sum(paidOut.filter((p) => inRange(p.timestamp))) +
+            sum(withdrawals.filter((t) => inRange(t.timestamp)))) /
+            1000,
+        ),
       });
     }
 
@@ -184,7 +191,7 @@ export const dashboard = query({
       kpis: {
         activeClients: data.customers.filter((c) => c.status === "verified").length,
         newClientsMonth: data.customers.filter((c) => c._creationTime >= monthStart).length,
-        totalSavings: sum(completed),
+        totalSavings: sum(deposits) - sum(withdrawals),
         txMonth: completed.filter((t) => t.timestamp >= monthStart).length,
         txPrevMonth: completed.filter(
           (t) => t.timestamp >= prevMonthStart && t.timestamp < monthStart,
@@ -274,7 +281,7 @@ export const listAgents = query({
           status: u.status,
           canCollect,
           clients: data.customers.filter((c) => c.onboardedBy === u._id).length,
-          collected: monthTx.reduce((s, t) => s + t.amount, 0),
+          collected: monthTx.filter((t) => !isWithdrawal(t)).reduce((s, t) => s + t.amount, 0),
           txMonth: monthTx.length,
           device: device && {
             serial: device.serialNumber,
@@ -388,7 +395,7 @@ export const openSessions = query({
         tpe: devices.find((d) => d.assignedTo === u._id)?.serialNumber ?? "—",
         opened: Math.min(...txs.map((t) => t.timestamp)),
         txCount: txs.length,
-        expected: txs.reduce((s, t) => s + t.amount, 0),
+        expected: txs.reduce((s, t) => s + signedAmount(t), 0),
       });
     }
     return sessions;

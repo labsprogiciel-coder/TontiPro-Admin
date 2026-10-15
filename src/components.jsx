@@ -63,6 +63,7 @@ const ERROR_MESSAGES = {
   CUSTOMER_NOT_FOUND: "Client introuvable dans cette agence.",
   NO_DEVICE:         "Aucun TPE actif n'est lié à cet agent.",
   DAY_CLOSED:        "La caisse du jour est déjà clôturée.",
+  INSUFFICIENT_BALANCE: "Solde du client insuffisant.",
 }
 const ERROR_PATTERNS = [
   [/Unauthenticated|session/i,                  "Session expirée. Reconnectez-vous."],
