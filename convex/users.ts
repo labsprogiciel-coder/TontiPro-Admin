@@ -2,7 +2,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
-import { internalMutation, MutationCtx, query, QueryCtx } from "./_generated/server";
+import { internalMutation, internalQuery, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { authz } from "./authz";
 
 export const ROLE = v.union(
@@ -21,6 +21,66 @@ export async function hashActivationCode(code: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code));
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/**
+ * Canonical form of a staff phone number, the form stored in `users.phoneNumber`
+ * and used to sign in: separators dropped, a leading 00 turned into +, and an
+ * 8-digit local number given the Burkina Faso prefix (+226). So "70 11 22 33",
+ * "+226 70-11-22-33" and "0022670112233" are all "+22670112233". Null when the
+ * input isn't a phone number.
+ */
+export function normalizeStaffPhone(phone: string): string | null {
+  let p = phone.replace(/[\s.\-()]/g, "").replace(/^00/, "+");
+  if (/^\d{8}$/.test(p)) p = `+226${p}`;
+  return /^\+\d{8,15}$/.test(p) ? p : null;
+}
+
+/**
+ * The email (password account ID) of the staff member with this phone, for
+ * phone sign-in and reset. Null when unknown, malformed or shared by two rows.
+ */
+export const staffEmailByPhone = internalQuery({
+  args: { phone: v.string() },
+  handler: async (ctx, args) => {
+    const phone = normalizeStaffPhone(args.phone);
+    if (!phone) return null;
+    const matches = await ctx.db
+      .query("users")
+      .withIndex("by_phone", (q) => q.eq("phoneNumber", phone))
+      .take(2);
+    return matches.length === 1 ? matches[0].email : null;
+  },
+});
+
+/**
+ * One-off: rewrite every staff phone in canonical form so phone sign-in finds
+ * it. Reports rows it can't parse and numbers shared by several staff members;
+ * fix those from the dashboard, since phone sign-in refuses them.
+ *   npx convex run users:normalizeStaffPhones
+ */
+export const normalizeStaffPhones = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    const invalid: string[] = [];
+    const seen = new Map<string, number>();
+    let updated = 0;
+    for (const user of users) {
+      const phone = normalizeStaffPhone(user.phoneNumber);
+      if (!phone) {
+        invalid.push(user.email);
+        continue;
+      }
+      seen.set(phone, (seen.get(phone) ?? 0) + 1);
+      if (phone !== user.phoneNumber) {
+        await ctx.db.patch(user._id, { phoneNumber: phone });
+        updated++;
+      }
+    }
+    const duplicates = [...seen].filter(([, n]) => n > 1).map(([phone]) => phone);
+    return { updated, invalid, duplicates };
+  },
+});
 
 /**
  * Return the signed-in, active staff member; throw if unauthenticated, missing or suspended. Authz user IDs are `users._id`.
