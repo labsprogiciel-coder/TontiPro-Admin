@@ -13,6 +13,7 @@ import ObjectifsPage from './pages/ObjectifsPage'
 import SettingsPage from './pages/SettingsPage'
 import ProductsPage from './pages/ProductsPage'
 import ReconciliationPage from './pages/ReconciliationPage'
+import { canOpenPage, hasDashboardAccess, landingPage } from './access'
 
 const PAGES = {
   dashboard:      DashboardPage,
@@ -41,21 +42,33 @@ function ActiveStaffGate() {
   const me = useQuery(api.users.me)
   const { signOut } = useAuthActions()
   if (me === undefined) return <Loading />
-  if (me?.active) return <Shell />
+  if (me?.active && hasDashboardAccess(me.can)) return <Shell can={me.can} />
+  const message = me?.active
+    // Field agents work from the mobile app; the server refuses them the dashboard data
+    ? ["Accès réservé", "Le tableau de bord est réservé aux superviseurs, comptables et administrateurs. Utilisez l'application mobile."]
+    : ["Compte inactif", "Ce compte est suspendu ou n'existe plus. Contactez l'Admin IT de votre agence."]
   return (
     <div style={{ padding: 40, maxWidth: 480, margin: "80px auto", textAlign: "center" }}>
-      <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 8 }}>Compte inactif</div>
-      <div style={{ color: "var(--ink-3)", fontSize: 13, marginBottom: 16 }}>
-        Ce compte est suspendu ou n'existe plus. Contactez l'Admin IT de votre agence.
-      </div>
+      <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 8 }}>{message[0]}</div>
+      <div style={{ color: "var(--ink-3)", fontSize: 13, marginBottom: 16 }}>{message[1]}</div>
       <button className="btn" onClick={() => signOut()}>Se déconnecter</button>
     </div>
   )
 }
 
-function Shell() {
-  const [active, setActive] = useState('dashboard')
-  const Page = PAGES[active] ?? DashboardPage
+/** Shown instead of a page whose data this role can't read. */
+function AccessDenied() {
+  return (
+    <div style={{ padding: 40, maxWidth: 480, margin: "80px auto", textAlign: "center" }}>
+      <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 8 }}>Accès réservé</div>
+      <div style={{ color: "var(--ink-3)", fontSize: 13 }}>Votre rôle ne donne pas accès à cette page.</div>
+    </div>
+  )
+}
+
+function Shell({ can }) {
+  const [active, setActive] = useState(() => landingPage(can))
+  const Page = canOpenPage(active, can) ? (PAGES[active] ?? AccessDenied) : AccessDenied
 
   return (
     <div className="app">
@@ -63,7 +76,7 @@ function Shell() {
       <main className="main">
         <Page />
       </main>
-      <AppCommandPalette setActive={setActive} />
+      <AppCommandPalette setActive={setActive} can={can} />
     </div>
   )
 }
