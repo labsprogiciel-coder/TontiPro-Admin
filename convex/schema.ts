@@ -94,6 +94,10 @@ export default defineSchema({
     // UUID the mobile app generates when it records a collection, so an
     // offline replay can't create the same deposit twice
     clientId: v.optional(v.string()),
+    // Withdrawal the app queued offline and replayed later
+    offline: v.optional(v.boolean()),
+    // That offline withdrawal took the customer's balance below zero
+    overdraft: v.optional(v.boolean()),
   })
     .index("by_agent_date", ["agentId"]) // Convex appends _creationTime to every index
     .index("by_branch", ["branchId"])

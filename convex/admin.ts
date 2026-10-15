@@ -107,7 +107,9 @@ function movementRows(data: Ledger) {
     id: t._id as string,
     kind: "transaction" as const,
     type: isWithdrawal(t) ? ("out" as const) : ("in" as const),
-    label: isWithdrawal(t) ? "Retrait" : "Dépôt",
+    label: t.overdraft ? "Retrait (découvert)" : isWithdrawal(t) ? "Retrait" : "Dépôt",
+    // Offline withdrawal that took the customer's balance below zero
+    overdraft: t.overdraft === true,
     amount: t.amount,
     timestamp: t.timestamp,
     customerId: t.customerId,
@@ -126,6 +128,7 @@ function movementRows(data: Ledger) {
     kind: "disbursement" as const,
     type: "out" as const,
     label: "Décaissement",
+    overdraft: false,
     amount: d.amount,
     timestamp: d.timestamp,
     customerId: d.customerId,

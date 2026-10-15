@@ -73,6 +73,7 @@ function TxDrawer({ tx, onClose, can }) {
               <dt>Agent</dt><dd>{tx.agent}</dd>
               <dt>Client</dt><dd>{tx.client}</dd>
               {tx.reason && <><dt>Motif annulation</dt><dd>{tx.reason}</dd></>}
+              {tx.overdraft && <><dt>Alerte</dt><dd style={{ color: "var(--neg)" }}>Retrait hors ligne supérieur au solde du client : à régulariser.</dd></>}
               {tx.reversedBy && <><dt>Annulée par</dt><dd>{tx.reversedBy}</dd></>}
             </dl>
           </div>
