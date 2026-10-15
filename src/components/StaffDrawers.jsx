@@ -93,13 +93,15 @@ export function NewStaffDrawer({ onClose, onCreated }) {
 }
 
 /**
- * Role, activation code and suspension for one staff member. Controls are disabled on the admin's own account.
+ * Role, activation or password reset code, and suspension for one staff member.
+ * Role and status controls are disabled on the admin's own account.
  */
 export function StaffDrawer({ userId, onClose }) {
   const staff     = useQuery(api.staff.get, { userId })
   const setRole   = useMutation(api.staff.setRole)
   const setStatus = useMutation(api.staff.setStatus)
-  const issueCode = useMutation(api.staff.issueActivationCode)
+  const issueActivation = useMutation(api.staff.issueActivationCode)
+  const issueReset      = useMutation(api.staff.issueResetCode)
   const [role, setRoleDraft] = useState(null)
   const [issued, setIssued]  = useState(null) // { code, expiresAt }: shown once
   const [confirmSuspend, setConfirmSuspend] = useState(false)
@@ -119,6 +121,10 @@ export function StaffDrawer({ userId, onClose }) {
     setBusy(true); setError(null)
     try { await fn() } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
+  // Activation for a new account, reset once a password exists: same one-time code
+  const reset     = staff.activated
+  const issueCode = reset ? issueReset : issueActivation
+  const screen    = reset ? "Mot de passe oublié" : "Première connexion"
   const copy = async () => {
     try { await navigator.clipboard.writeText(issued.code); setCopied(true) } catch { /* clipboard blocked */ }
   }
@@ -156,10 +162,8 @@ export function StaffDrawer({ userId, onClose }) {
       </div>
 
       <div className="drawer-section">
-        <div className="card-title" style={{ marginBottom: 10 }}>Activation</div>
-        {staff.activated ? (
-          <div className="cell-sub">Le mot de passe a été défini. La connexion se fait avec « Se connecter ».</div>
-        ) : issued ? (
+        <div className="card-title" style={{ marginBottom: 10 }}>{reset ? "Mot de passe" : "Activation"}</div>
+        {issued ? (
           <div style={{ padding: 14, borderRadius: 10, background: "var(--surface-2)", display: "flex", flexDirection: "column", gap: 8 }}>
             <div className="cell-sub">Transmettez ce code à {staff.name.split(" ")[0]}. Il ne sera plus affiché.</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -168,7 +172,7 @@ export function StaffDrawer({ userId, onClose }) {
             </div>
             <div className="cell-sub">
               Valable jusqu'au {new Date(issued.expiresAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })} · usage unique ·
-              écran « Première connexion »
+              écran « {screen} »
             </div>
           </div>
         ) : (
@@ -176,11 +180,13 @@ export function StaffDrawer({ userId, onClose }) {
             <div className="cell-sub">
               {staff.codePendingUntil
                 ? `Un code est en attente jusqu'au ${new Date(staff.codePendingUntil).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}. En générer un nouveau annule le précédent.`
-                : "Aucun code en cours. Générez-en un pour que la personne puisse choisir son mot de passe."}
+                : reset
+                  ? "Le mot de passe a été défini. En cas d'oubli, générez un code de réinitialisation : l'ancien mot de passe reste valable jusqu'à son utilisation."
+                  : "Aucun code en cours. Générez-en un pour que la personne puisse choisir son mot de passe."}
             </div>
-            <button className="btn brand" disabled={busy || suspended}
+            <button className={"btn " + (reset ? "" : "brand")} disabled={busy || suspended}
               onClick={() => run(async () => { setIssued(await issueCode({ userId })); setCopied(false) })}>
-              {staff.codePendingUntil ? "Générer un nouveau code" : "Générer un code d'activation"}
+              {staff.codePendingUntil ? "Générer un nouveau code" : reset ? "Générer un code de réinitialisation" : "Générer un code d'activation"}
             </button>
             {suspended && <div className="cell-sub">Réactivez le compte avant de générer un code.</div>}
           </div>

@@ -84,7 +84,7 @@ export const assignRole = internalMutation({
 });
 
 /**
- * Issue the one-time code a staff member needs for "Première connexion", from the CLI. Re-issuing replaces the previous code. Only the hash is stored.
+ * Issue a one-time code from the CLI: for "Première connexion" if the account has no password yet, otherwise for "Mot de passe oublié". Re-issuing replaces the previous code. Only the hash is stored.
  *   npx convex run users:issueActivationCode '{"email":"…"}'
  */
 export const issueActivationCode = internalMutation({
@@ -100,7 +100,7 @@ export const issueActivationCode = internalMutation({
 });
 
 /**
- * Generate a 48h activation code for an active user and store its hash. Returns the plain code and its expiry. Shared by the CLI mutation above and `staff.issueActivationCode` (UI).
+ * Generate a 48h activation code for an active user and store its hash. Returns the plain code and its expiry. Shared by the CLI mutation above and `staff.issueActivationCode` / `staff.issueResetCode` (UI).
  */
 export async function createActivationCode(ctx: MutationCtx, user: Doc<"users">) {
   if (user.status !== "active") throw new Error("Account suspended");

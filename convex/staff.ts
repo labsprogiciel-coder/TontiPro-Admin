@@ -169,3 +169,25 @@ export const issueActivationCode = mutation({
     return createActivationCode(ctx, user);
   },
 });
+
+/**
+ * Issue a one-time password reset code for an activated account, replacing any
+ * pending code. Returns the plain code once; it is used on the "Mot de passe
+ * oublié" screen (passwordReset.resetPassword). The current password keeps
+ * working until the code is used. Refused for unactivated or suspended accounts.
+ */
+export const issueResetCode = mutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    await requireStaffAdmin(ctx);
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new ConvexError("NOT_FOUND");
+    const account = await ctx.db
+      .query("authAccounts")
+      .withIndex("userIdAndProvider", (q) => q.eq("userId", user._id).eq("provider", "password"))
+      .first();
+    if (!account) throw new ConvexError("NOT_ACTIVATED");
+    if (user.status !== "active") throw new ConvexError("SUSPENDED");
+    return createActivationCode(ctx, user);
+  },
+});
