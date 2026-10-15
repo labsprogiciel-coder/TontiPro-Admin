@@ -36,13 +36,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build web app
         run: pnpm run build
-      # Secrets aren't available to pull requests from forks
+      # Secrets aren't available to pull requests from forks. Preview deploy
+      # keys start with "preview:"; a dev or prod key is refused by Convex.
       - name: Deploy to Convex preview
-        if: env.CONVEX_DEPLOY_KEY != ''
-        run: >
-          npx convex deploy
-          --preview-create "${{ github.head_ref }}"
-          --preview-run seed:seedDatabase
+        run: |
+          case "$CONVEX_DEPLOY_KEY" in
+            "") echo "::notice::No CONVEX_PREVIEW_DEPLOY_KEY (fork PR?); skipping preview deploy"; exit 0 ;;
+            preview:*) ;;
+            *) echo "::warning::CONVEX_PREVIEW_DEPLOY_KEY is not a preview deploy key (it starts with '${CONVEX_DEPLOY_KEY%%:*}:'). Generate one under Convex dashboard > Project settings > Preview deploy keys and update the secret. Skipping preview deploy."; exit 0 ;;
+          esac
+          npx convex deploy \
+            --preview-create "${{ github.head_ref }}" \
+            --preview-run seed:seedDatabase
 
   production:
     if: github.event_name == 'push'
@@ -62,7 +67,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Refuse anything but a production key so main never lands on a dev deployment
       - name: Deploy to Convex production
-        run: npx convex deploy
+        run: |
+          case "$CONVEX_DEPLOY_KEY" in
+            prod:*|project:*) ;;
+            *) echo "::error::CONVEX_DEPLOY_KEY must be a production or project deploy key (prod:... or project:...). Get it from the production deployment's settings in the Convex dashboard."; exit 1 ;;
+          esac
+          npx convex deploy
       - name: Sync role permissions
         run: npx convex run users:syncRolePermissions
