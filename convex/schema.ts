@@ -59,7 +59,8 @@ export default defineSchema({
     metadata: v.optional(v.any()), // Extra KYC info
   })
     .index("by_phone", ["phoneNumber"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_branch", ["branchId"]),
 
   // 4. DEVICE BINDING (TPE Tracking)
   devices: defineTable({

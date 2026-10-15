@@ -56,6 +56,9 @@ const ERROR_MESSAGES = {
   NOT_ACTIVATED:     "Ce compte n'a pas encore de mot de passe : générez un code d'activation.",
   SUSPENDED:         "Ce compte est suspendu.",
   FORBIDDEN:         "Vous n'avez pas l'autorisation pour cette action.",
+  INVALID_PHONE:     "Numéro de téléphone invalide.",
+  PHONE_TAKEN:       "Un client de cette agence a déjà ce numéro.",
+  INVALID_ID_NUMBER: "Numéro de pièce d'identité trop long.",
 }
 const ERROR_PATTERNS = [
   [/Unauthenticated|session/i,                  "Session expirée. Reconnectez-vous."],
