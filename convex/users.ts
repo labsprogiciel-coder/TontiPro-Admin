@@ -1,7 +1,7 @@
 // convex/users.ts — current staff member, and role administration
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { Doc } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { authz } from "./authz";
 
@@ -35,7 +35,19 @@ export async function requireUser(ctx: QueryCtx) {
 }
 
 /**
- * The signed-in staff member for the UI: `null` when signed out, `{ active: false }` when suspended, otherwise profile, roles and `can` flags. The flags are UI hints only; every mutation checks its own permission.
+ * The terminal bound to a staff member (one at most), as the mobile app needs
+ * it to check it runs on that TPE, or null. Serial format: BRAND-MODEL-INSTALLID.
+ */
+export async function assignedDevice(ctx: QueryCtx, userId: Id<"users">) {
+  const device = await ctx.db
+    .query("devices")
+    .withIndex("by_assignee", (q) => q.eq("assignedTo", userId))
+    .first();
+  return device ? { serialNumber: device.serialNumber, model: device.model, status: device.status } : null;
+}
+
+/**
+ * The signed-in staff member for the UI: `null` when signed out, `{ active: false }` when suspended, otherwise profile, roles, bound `device` and `can` flags. The flags are UI hints only; every mutation checks its own permission.
  */
 export const me = query({
   args: {},
@@ -47,8 +59,9 @@ export const me = query({
     if (user.status !== "active") return { id: user._id, name: user.fullName, active: false as const };
     const can = (permission: Parameters<typeof authz.can>[2]) =>
       authz.can(ctx, user._id, permission).catch(() => false);
-    const [branch, roles, reverse, approve, liquidate, bind, manageStaff] = await Promise.all([
+    const [branch, device, roles, reverse, approve, liquidate, bind, manageStaff] = await Promise.all([
       ctx.db.get(user.branchId),
+      assignedDevice(ctx, user._id),
       authz.getUserRoles(ctx, user._id).catch(() => []),
       can("transactions:reverse"),
       can("disbursements:approve"),
@@ -63,6 +76,7 @@ export const me = query({
       email: user.email,
       branch: branch?.name ?? null,
       roles: roles.map((r) => r.role),
+      device,
       // UI hints only: every mutation re-checks its own permission
       can: { reverse, approve, liquidate, bind, manageStaff },
     };

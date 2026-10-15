@@ -1,8 +1,9 @@
 // convex/devices.ts — TPE ↔ agent binding (it_admin only, via devices:bind)
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { mutation, MutationCtx } from "./_generated/server";
+import { mutation, MutationCtx, query } from "./_generated/server";
 import { authz } from "./authz";
-import { requireUser } from "./users";
+import { assignedDevice, requireUser } from "./users";
 
 /**
  * Return the authenticated user after checking the devices:bind permission.
@@ -89,5 +90,19 @@ export const unbindDevice = mutation({
       boundAt: Date.now(),
     });
     return device._id;
+  },
+});
+
+/**
+ * The caller's own bound terminal ({ serialNumber, model, status }), or null
+ * when none is bound or nobody is signed in. Used by the mobile app's
+ * bind-device / verify-device screens; also returned as `users.me().device`.
+ */
+export const myDevice = query({
+  args: {},
+  handler: async (ctx) => {
+    if (!(await getAuthUserId(ctx))) return null;
+    const user = await requireUser(ctx);
+    return assignedDevice(ctx, user._id);
   },
 });
