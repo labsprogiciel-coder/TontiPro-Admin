@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { authz } from "./authz";
+import { signedAmount } from "./transactions";
 import { requireUser } from "./users";
 
 export const settleDailyCash = mutation({
@@ -34,7 +35,8 @@ export const settleDailyCash = mutation({
       )
       .collect();
 
-    const systemExpected = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+    // Cash the agent should hold: deposits taken in minus withdrawals paid out
+    const systemExpected = transactions.reduce((sum, tx) => sum + signedAmount(tx), 0);
     const variance = args.physicalAmount - systemExpected;
 
     // 3. Determine status

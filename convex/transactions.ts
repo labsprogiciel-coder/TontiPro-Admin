@@ -1,86 +1,136 @@
 // convex/transactions.ts
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import { Doc } from "./_generated/dataModel";
-import { mutation, query, QueryCtx } from "./_generated/server";
+import { Doc, Id } from "./_generated/dataModel";
+import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { authz } from "./authz";
 import { assignedDevice, requireUser } from "./users";
 
-const MAX_DEPOSIT = 100_000_000; // sanity cap, in the branch currency
+const MAX_AMOUNT = 100_000_000; // sanity cap, in the branch currency
 
 /** The UTC day (YYYY-MM-DD) of a timestamp, as reconciliation.ts files it. */
 const utcDay = (ms: number) => new Date(ms).toISOString().split("T")[0];
 
+/** Rows written before withdrawals existed have no type: they are deposits. */
+export const isWithdrawal = (t: Doc<"transactions">) => t.type === "withdrawal";
+
+/**
+ * A transaction's effect on the customer's balance and on the agent's cash:
+ * deposits add, withdrawals subtract. Callers filter on status themselves.
+ */
+export const signedAmount = (t: Doc<"transactions">) => (isWithdrawal(t) ? -t.amount : t.amount);
+
+/** A customer's balance: completed deposits minus completed withdrawals. */
+export async function customerBalance(ctx: QueryCtx, customerId: Id<"customers">) {
+  const rows = await ctx.db
+    .query("transactions")
+    .withIndex("by_customer", (q) => q.eq("customerId", customerId))
+    .collect();
+  return rows.filter((t) => t.status === "completed").reduce((s, t) => s + signedAmount(t), 0);
+}
+
+const movementArgs = {
+  customerId: v.id("customers"),
+  amount: v.number(),
+  clientId: v.string(),
+};
+
+/**
+ * Record a cash movement by the signed-in agent. The agent, branch, TPE (the
+ * agent's bound device) and time come from the server, never from arguments.
+ * `clientId` is the UUID the app generated when it recorded the movement:
+ * replaying the same one returns the row already stored instead of a second
+ * one.
+ */
+async function recordMovement(
+  ctx: MutationCtx,
+  type: "deposit" | "withdrawal",
+  args: { customerId: Id<"customers">; amount: number; clientId: string },
+) {
+  const agent = await requireUser(ctx);
+  const permission = type === "deposit" ? "transactions:collect" : "transactions:withdraw";
+  if (!(await authz.can(ctx, agent._id, permission))) {
+    throw new ConvexError("FORBIDDEN");
+  }
+  const clientId = args.clientId.trim();
+  if (!clientId || clientId.length > 64) throw new ConvexError("INVALID_CLIENT_ID");
+
+  // Idempotent replay: checked first, so a movement already stored is
+  // returned even if the day has been closed since
+  const previous = await ctx.db
+    .query("transactions")
+    .withIndex("by_client_id", (q) => q.eq("clientId", clientId))
+    .first();
+  if (previous) {
+    if (previous.agentId !== agent._id || isWithdrawal(previous) !== (type === "withdrawal")) {
+      throw new ConvexError("DUPLICATE_CLIENT_ID");
+    }
+    return previous._id;
+  }
+
+  if (!Number.isInteger(args.amount) || args.amount <= 0 || args.amount > MAX_AMOUNT) {
+    throw new ConvexError("INVALID_AMOUNT");
+  }
+  const customer = await ctx.db.get(args.customerId);
+  if (!customer || customer.branchId !== agent.branchId) {
+    throw new ConvexError("CUSTOMER_NOT_FOUND");
+  }
+  const device = await assignedDevice(ctx, agent._id);
+  if (!device || device.status !== "active") throw new ConvexError("NO_DEVICE");
+
+  const now = Date.now();
+  const closed = await ctx.db
+    .query("reconciliations")
+    .withIndex("by_agent_date", (q) => q.eq("agentId", agent._id).eq("date", utcDay(now)))
+    .first();
+  if (closed) throw new ConvexError("DAY_CLOSED");
+
+  // Mutations are serialized, so two withdrawals can't both pass this check
+  if (type === "withdrawal" && (await customerBalance(ctx, customer._id)) < args.amount) {
+    throw new ConvexError("INSUFFICIENT_BALANCE");
+  }
+
+  const branch = await ctx.db.get(agent.branchId);
+  const organization = branch ? await ctx.db.get(branch.organizationId) : null;
+  return await ctx.db.insert("transactions", {
+    type,
+    amount: args.amount,
+    currency: organization?.currency ?? "XOF",
+    customerId: customer._id,
+    agentId: agent._id,
+    branchId: agent.branchId,
+    tpeId: device.serialNumber,
+    status: "completed",
+    timestamp: now,
+    clientId,
+  });
+}
+
 /**
  * Record a cash deposit collected by the signed-in agent. Requires
- * transactions:collect. The agent, branch, TPE (the agent's bound device) and
- * time come from the server, never from arguments. `clientId` is the UUID the
- * app generated when it recorded the collection: replaying the same one
- * returns the deposit already stored instead of a second one. Throws
- * `INVALID_AMOUNT`, `CUSTOMER_NOT_FOUND` (unknown or another branch's),
- * `NO_DEVICE` (no active bound TPE), `DAY_CLOSED` (today's cash already
- * reconciled), `DUPLICATE_CLIENT_ID` (UUID used by another agent) or
- * `FORBIDDEN`.
+ * transactions:collect. See recordMovement for what the server sets and for
+ * replays. Throws `INVALID_AMOUNT`, `CUSTOMER_NOT_FOUND` (unknown or another
+ * branch's), `NO_DEVICE` (no active bound TPE), `DAY_CLOSED` (today's cash
+ * already reconciled), `DUPLICATE_CLIENT_ID` (UUID used by another agent or
+ * for a withdrawal) or `FORBIDDEN`.
  */
 export const createDeposit = mutation({
-  args: {
-    customerId: v.id("customers"),
-    amount: v.number(),
-    clientId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const agent = await requireUser(ctx);
-    if (!(await authz.can(ctx, agent._id, "transactions:collect"))) {
-      throw new ConvexError("FORBIDDEN");
-    }
-    const clientId = args.clientId.trim();
-    if (!clientId || clientId.length > 64) throw new ConvexError("INVALID_CLIENT_ID");
-
-    // Idempotent replay: checked first, so a deposit already stored is
-    // returned even if the day has been closed since
-    const previous = await ctx.db
-      .query("transactions")
-      .withIndex("by_client_id", (q) => q.eq("clientId", clientId))
-      .first();
-    if (previous) {
-      if (previous.agentId !== agent._id) throw new ConvexError("DUPLICATE_CLIENT_ID");
-      return previous._id;
-    }
-
-    if (!Number.isInteger(args.amount) || args.amount <= 0 || args.amount > MAX_DEPOSIT) {
-      throw new ConvexError("INVALID_AMOUNT");
-    }
-    const customer = await ctx.db.get(args.customerId);
-    if (!customer || customer.branchId !== agent.branchId) {
-      throw new ConvexError("CUSTOMER_NOT_FOUND");
-    }
-    const device = await assignedDevice(ctx, agent._id);
-    if (!device || device.status !== "active") throw new ConvexError("NO_DEVICE");
-
-    const now = Date.now();
-    const closed = await ctx.db
-      .query("reconciliations")
-      .withIndex("by_agent_date", (q) => q.eq("agentId", agent._id).eq("date", utcDay(now)))
-      .first();
-    if (closed) throw new ConvexError("DAY_CLOSED");
-
-    const branch = await ctx.db.get(agent.branchId);
-    const organization = branch ? await ctx.db.get(branch.organizationId) : null;
-    return await ctx.db.insert("transactions", {
-      amount: args.amount,
-      currency: organization?.currency ?? "XOF",
-      customerId: customer._id,
-      agentId: agent._id,
-      branchId: agent.branchId,
-      tpeId: device.serialNumber,
-      status: "completed",
-      timestamp: now,
-      clientId,
-    });
-  },
+  args: movementArgs,
+  handler: (ctx, args) => recordMovement(ctx, "deposit", args),
 });
 
-/** Shape of the caller's own collections for the mobile app. */
+/**
+ * Pay cash out of a customer's savings at the TPE: a direct debit, with no
+ * approval step. Requires transactions:withdraw. Same rules and errors as
+ * createDeposit, plus `INSUFFICIENT_BALANCE` when the amount exceeds the
+ * customer's balance (completed deposits minus completed withdrawals).
+ */
+export const createWithdrawal = mutation({
+  args: movementArgs,
+  handler: (ctx, args) => recordMovement(ctx, "withdrawal", args),
+});
+
+/** Shape of the caller's own movements for the mobile app. */
 async function myRows(ctx: QueryCtx, rows: Doc<"transactions">[]) {
   const names = new Map<string, string>();
   for (const t of rows) {
@@ -90,6 +140,7 @@ async function myRows(ctx: QueryCtx, rows: Doc<"transactions">[]) {
   }
   return rows.map((t) => ({
     _id: t._id,
+    type: isWithdrawal(t) ? ("withdrawal" as const) : ("deposit" as const),
     clientId: t.clientId ?? null,
     customerId: t.customerId,
     customerName: names.get(t.customerId)!,

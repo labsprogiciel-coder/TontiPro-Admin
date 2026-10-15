@@ -119,10 +119,11 @@ export const me = query({
     if (user.status !== "active") return { id: user._id, name: user.fullName, active: false as const };
     const can = (permission: Parameters<typeof authz.can>[2]) =>
       authz.can(ctx, user._id, permission).catch(() => false);
-    const [branch, device, roles, reverse, approve, liquidate, bind, manageStaff] = await Promise.all([
+    const [branch, device, roles, withdraw, reverse, approve, liquidate, bind, manageStaff] = await Promise.all([
       ctx.db.get(user.branchId),
       assignedDevice(ctx, user._id),
       authz.getUserRoles(ctx, user._id).catch(() => []),
+      can("transactions:withdraw"),
       can("transactions:reverse"),
       can("disbursements:approve"),
       can("reconciliation:liquidate"),
@@ -142,7 +143,7 @@ export const me = query({
       roles: roles.map((r) => r.role),
       device,
       // UI hints only: every mutation re-checks its own permission
-      can: { reverse, approve, liquidate, bind, manageStaff },
+      can: { withdraw, reverse, approve, liquidate, bind, manageStaff },
     };
   },
 });
