@@ -1,6 +1,6 @@
 // convex/passwordReset.ts — "Mot de passe oublié" for activated staff accounts.
 // An administrator issues a one-time code (staff.issueResetCode); the staff
-// member trades it, with their email, for a new password. Same code storage
+// member trades it, with their email or phone, for a new password. Same code storage
 // as activation: only the hash, 48h, single use.
 import { invalidateSessions, modifyAccountCredentials } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
@@ -43,14 +43,24 @@ export const consumeResetCode = internalMutation({
 
 /**
  * Set a new password with an administrator-issued reset code, then sign the
- * account out everywhere. Throws `WEAK_PASSWORD`, or `RESET_REFUSED` for any
- * wrong email, code or account state.
+ * account out everywhere. Identify the account by `email` (dashboard) or
+ * `phone` (mobile app). Throws `WEAK_PASSWORD`, or `RESET_REFUSED` for any
+ * wrong identifier, code or account state.
  */
 export const resetPassword = action({
-  args: { email: v.string(), code: v.string(), newPassword: v.string() },
+  args: {
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    code: v.string(),
+    newPassword: v.string(),
+  },
   handler: async (ctx, args) => {
     if (args.newPassword.length < MIN_PASSWORD_LENGTH) throw new ConvexError("WEAK_PASSWORD");
-    const email = args.email.trim().toLowerCase();
+    const email =
+      args.phone !== undefined
+        ? await ctx.runQuery(internal.users.staffEmailByPhone, { phone: args.phone })
+        : args.email?.trim().toLowerCase();
+    if (!email) throw new ConvexError("RESET_REFUSED");
     const userId = await ctx.runMutation(internal.passwordReset.consumeResetCode, {
       email,
       code: args.code.trim().toUpperCase(),

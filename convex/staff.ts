@@ -3,7 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { authz } from "./authz";
-import { createActivationCode, requireUser, ROLE } from "./users";
+import { createActivationCode, normalizeStaffPhone, requireUser, ROLE } from "./users";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -69,7 +69,7 @@ export const get = query({
 });
 
 /**
- * Create a staff member with one role. Validates the input and rejects a duplicate email (case-insensitive). Returns the new user ID; the account is activated later with a code from `issueActivationCode`.
+ * Create a staff member with one role. Validates the input, stores the phone in canonical form and rejects a duplicate email (case-insensitive) or phone. Returns the new user ID; the account is activated later with a code from `issueActivationCode`.
  */
 export const create = mutation({
   args: {
@@ -83,16 +83,23 @@ export const create = mutation({
     await requireStaffAdmin(ctx);
     const fullName = args.fullName.trim();
     const email = args.email.trim().toLowerCase();
-    const phoneNumber = args.phoneNumber.trim();
     if (!fullName) throw new ConvexError("NAME_REQUIRED");
     if (!EMAIL_RE.test(email)) throw new ConvexError("INVALID_EMAIL");
-    if (!phoneNumber) throw new ConvexError("PHONE_REQUIRED");
+    if (!args.phoneNumber.trim()) throw new ConvexError("PHONE_REQUIRED");
+    // Stored in canonical form and unique: agents sign in with it
+    const phoneNumber = normalizeStaffPhone(args.phoneNumber);
+    if (!phoneNumber) throw new ConvexError("INVALID_PHONE");
     if (!(await ctx.db.get(args.branchId))) throw new ConvexError("BRANCH_NOT_FOUND");
     const existing = await ctx.db
       .query("users")
       .withIndex("email", (q) => q.eq("email", email))
       .first();
     if (existing) throw new ConvexError("EMAIL_TAKEN");
+    const samePhone = await ctx.db
+      .query("users")
+      .withIndex("by_phone", (q) => q.eq("phoneNumber", phoneNumber))
+      .first();
+    if (samePhone) throw new ConvexError("PHONE_TAKEN");
 
     const userId = await ctx.db.insert("users", {
       fullName, email, phoneNumber, branchId: args.branchId, status: "active",

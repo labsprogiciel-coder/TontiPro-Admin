@@ -57,7 +57,7 @@ const ERROR_MESSAGES = {
   SUSPENDED:         "Ce compte est suspendu.",
   FORBIDDEN:         "Vous n'avez pas l'autorisation pour cette action.",
   INVALID_PHONE:     "Numéro de téléphone invalide.",
-  PHONE_TAKEN:       "Un client de cette agence a déjà ce numéro.",
+  PHONE_TAKEN:       "Ce numéro de téléphone est déjà utilisé.",
   INVALID_ID_NUMBER: "Numéro de pièce d'identité trop long.",
 }
 const ERROR_PATTERNS = [

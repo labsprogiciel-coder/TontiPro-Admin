@@ -1,7 +1,11 @@
-// convex/auth.ts — staff sign-in (email + password, invite-only)
+// convex/auth.ts — staff sign-in (email or phone + password, invite-only)
+import { ConvexCredentials } from "@convex-dev/auth/providers/ConvexCredentials";
 import { Password } from "@convex-dev/auth/providers/Password";
-import { convexAuth } from "@convex-dev/auth/server";
+import { convexAuth, createAccount, retrieveAccount } from "@convex-dev/auth/server";
+import { internal } from "./_generated/api";
 import { hashActivationCode } from "./users";
+
+const MIN_PASSWORD_LENGTH = 8;
 
 const normalizeEmail = (email: unknown) => String(email ?? "").trim().toLowerCase();
 
@@ -15,6 +19,43 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           email: normalizeEmail(params.email),
           activationCode: typeof params.code === "string" ? params.code.trim().toUpperCase() : undefined,
         }) as any,
+    }),
+    // Field agents sign in with their phone: signIn("phone", { phone, password,
+    // flow }). The phone only finds the staff member; the password is checked
+    // against, or for "Première connexion" (flow "signUp" + code) set on, the
+    // same email-keyed "password" account the dashboard uses. So one password
+    // works with either identifier, and activation keeps its code check.
+    ConvexCredentials({
+      id: "phone",
+      authorize: async (params, ctx) => {
+        const password = typeof params.password === "string" ? params.password : "";
+        const email =
+          typeof params.phone === "string"
+            ? await ctx.runQuery(internal.users.staffEmailByPhone, { phone: params.phone })
+            : null;
+        // Same message whatever is wrong, so the form doesn't reveal staff phones
+        if (!email || !password) throw new Error("Invalid credentials");
+        if (params.flow === "signIn") {
+          const { user } = await retrieveAccount(ctx, {
+            provider: "password",
+            account: { id: email, secret: password },
+          });
+          return { userId: user._id };
+        }
+        if (params.flow === "signUp") {
+          if (password.length < MIN_PASSWORD_LENGTH) throw new Error("Invalid password");
+          const { user } = await createAccount(ctx, {
+            provider: "password",
+            account: { id: email, secret: password },
+            profile: {
+              email,
+              activationCode: typeof params.code === "string" ? params.code.trim().toUpperCase() : undefined,
+            } as any,
+          });
+          return { userId: user._id };
+        }
+        throw new Error("Invalid credentials");
+      },
     }),
   ],
   callbacks: {

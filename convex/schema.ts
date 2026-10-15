@@ -42,7 +42,9 @@ export default defineSchema({
     // One-time code an administrator issues for "Première connexion"
     activationCodeHash: v.optional(v.string()),
     activationExpiresAt: v.optional(v.number()),
-  }).index("email", ["email"]), // Name required by Convex Auth
+  })
+    .index("email", ["email"]) // Name required by Convex Auth
+    .index("by_phone", ["phoneNumber"]), // Agents sign in with their phone (auth.ts)
 
   // 3. KYC & CUSTOMERS
   customers: defineTable({
