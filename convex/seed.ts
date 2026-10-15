@@ -5,6 +5,9 @@ import { authz } from "./authz";
 export const seedDatabase = internalMutation({
   args: {},
   handler: async (ctx) => {
+    // Already seeded: no-op, so running it twice (or on real data) is harmless
+    if (await ctx.db.query("organizations").first()) return null;
+
     // ── Organization ─────────────────────────────────────────────────────────
     const org = await ctx.db.insert("organizations", {
       name: "Kauri Finance S.A.",
