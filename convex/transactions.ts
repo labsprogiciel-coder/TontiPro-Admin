@@ -193,6 +193,8 @@ export const list = query({
       .query("transactions")
       .withIndex("by_agent_date", (q) => q.eq("agentId", agent._id))
       .order("desc")
+      // Spreadsheet imports are recorded under the importer but aren't theirs
+      .filter((q) => q.neq(q.field("imported"), true))
       .take(limit);
     return myRows(ctx, rows);
   },
@@ -217,7 +219,7 @@ export const listMineInRange = query({
       .collect();
     return myRows(
       ctx,
-      rows.filter((t) => t.timestamp >= args.from && t.timestamp < args.to),
+      rows.filter((t) => !t.imported && t.timestamp >= args.from && t.timestamp < args.to),
     );
   },
 });

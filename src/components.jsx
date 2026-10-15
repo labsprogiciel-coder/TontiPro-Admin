@@ -186,6 +186,7 @@ export function Sidebar({ active, setActive }) {
     ]},
     { group: "Admin", entries: [
       { id: "agents",      label: "Agents",      icon: <I.Users /> },
+      { id: "import",      label: "Importer",    icon: <I.ArrowDown /> },
       { id: "settings",    label: "Paramètres",  icon: <I.Settings /> },
     ]},
   ].map(g => ({ ...g, entries: g.entries.filter(allowed) })).filter(g => g.entries.length > 0)

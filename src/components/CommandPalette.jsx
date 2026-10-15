@@ -28,6 +28,7 @@ export default function AppCommandPalette({ setActive, can }) {
           { id: "produits",  children: "Produits",         icon: "CubeIcon",              onClick: () => setActive("produits") },
           { id: "reconciliation", children: "Réconciliation", icon: "CalculatorIcon",       onClick: () => setActive("reconciliation") },
           { id: "agents",    children: "Agents & TPE",     icon: "DevicePhoneMobileIcon", onClick: () => setActive("agents") },
+          { id: "import",    children: "Importer (Excel / CSV)", icon: "ArrowDownTrayIcon", onClick: () => setActive("import") },
           { id: "settings",  children: "Paramètres",       icon: "CogIcon",               onClick: () => setActive("settings") },
         ].filter((it) => canOpenPage(it.id, can)),
       },

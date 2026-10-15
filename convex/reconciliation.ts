@@ -30,6 +30,8 @@ export const settleDailyCash = mutation({
       .filter((q) =>
         q.and(
           q.eq(q.field("status"), "completed"),
+          // Imported history was never in this agent's cash drawer
+          q.neq(q.field("imported"), true),
           q.gte(q.field("timestamp"), dayStart),
         )
       )
