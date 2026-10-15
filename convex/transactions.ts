@@ -7,6 +7,12 @@ import { authz } from "./authz";
 import { assignedDevice, requireUser } from "./users";
 
 const MAX_AMOUNT = 100_000_000; // sanity cap, in the branch currency
+/**
+ * Largest withdrawal an agent may pay out while offline. The app enforces it
+ * before queuing; the server refuses anything larger so a modified client
+ * can't bypass it.
+ */
+export const OFFLINE_WITHDRAWAL_CAP = 25_000;
 
 /** The UTC day (YYYY-MM-DD) of a timestamp, as reconciliation.ts files it. */
 const utcDay = (ms: number) => new Date(ms).toISOString().split("T")[0];
@@ -45,7 +51,7 @@ const movementArgs = {
 async function recordMovement(
   ctx: MutationCtx,
   type: "deposit" | "withdrawal",
-  args: { customerId: Id<"customers">; amount: number; clientId: string },
+  args: { customerId: Id<"customers">; amount: number; clientId: string; offline?: boolean },
 ) {
   const agent = await requireUser(ctx);
   const permission = type === "deposit" ? "transactions:collect" : "transactions:withdraw";
@@ -85,9 +91,20 @@ async function recordMovement(
     .first();
   if (closed) throw new ConvexError("DAY_CLOSED");
 
-  // Mutations are serialized, so two withdrawals can't both pass this check
-  if (type === "withdrawal" && (await customerBalance(ctx, customer._id)) < args.amount) {
-    throw new ConvexError("INSUFFICIENT_BALANCE");
+  // An offline withdrawal was already paid out when it was queued: refusing it
+  // would only lose the record, so it is stored and flagged instead.
+  const offline = type === "withdrawal" && args.offline === true;
+  if (offline && args.amount > OFFLINE_WITHDRAWAL_CAP) {
+    throw new ConvexError("OFFLINE_LIMIT");
+  }
+  let overdraft = false;
+  if (type === "withdrawal") {
+    // Mutations are serialized, so two withdrawals can't both pass this check
+    const balance = await customerBalance(ctx, customer._id);
+    if (balance < args.amount) {
+      if (!offline) throw new ConvexError("INSUFFICIENT_BALANCE");
+      overdraft = true;
+    }
   }
 
   const branch = await ctx.db.get(agent.branchId);
@@ -103,6 +120,8 @@ async function recordMovement(
     status: "completed",
     timestamp: now,
     clientId,
+    ...(offline ? { offline: true } : {}),
+    ...(overdraft ? { overdraft: true } : {}),
   });
 }
 
@@ -124,9 +143,14 @@ export const createDeposit = mutation({
  * approval step. Requires transactions:withdraw. Same rules and errors as
  * createDeposit, plus `INSUFFICIENT_BALANCE` when the amount exceeds the
  * customer's balance (completed deposits minus completed withdrawals).
+ *
+ * `offline: true` marks the replay of a withdrawal the app queued offline,
+ * whose cash is already handed over: it is never refused for the balance, and
+ * is stored with `overdraft: true` if it takes the balance below zero. It
+ * must not exceed OFFLINE_WITHDRAWAL_CAP (`OFFLINE_LIMIT`).
  */
 export const createWithdrawal = mutation({
-  args: movementArgs,
+  args: { ...movementArgs, offline: v.optional(v.boolean()) },
   handler: (ctx, args) => recordMovement(ctx, "withdrawal", args),
 });
 
@@ -140,6 +164,7 @@ async function myRows(ctx: QueryCtx, rows: Doc<"transactions">[]) {
   }
   return rows.map((t) => ({
     _id: t._id,
+    overdraft: t.overdraft === true,
     type: isWithdrawal(t) ? ("withdrawal" as const) : ("deposit" as const),
     clientId: t.clientId ?? null,
     customerId: t.customerId,
