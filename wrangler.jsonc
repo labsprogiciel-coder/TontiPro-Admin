@@ -14,5 +14,12 @@
     "vars": {
       "ADMIN_ALLOW_ANONYMOUS": "false"
     }
+  },
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "persist": true
+    }
   }
 }
