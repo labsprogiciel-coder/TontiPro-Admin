@@ -88,10 +88,14 @@ export default defineSchema({
     status: v.union(v.literal("completed"), v.literal("reversed")),
     reversalReason: v.optional(v.string()),
     reversedBy: v.optional(v.id("users")), // Supervisor ID
-    timestamp: v.number()
+    timestamp: v.number(),
+    // UUID the mobile app generates when it records a collection, so an
+    // offline replay can't create the same deposit twice
+    clientId: v.optional(v.string()),
   })
     .index("by_agent_date", ["agentId"]) // Convex appends _creationTime to every index
-    .index("by_branch", ["branchId"]),
+    .index("by_branch", ["branchId"])
+    .index("by_client_id", ["clientId"]),
 
   // 6. DISBURSEMENTS (Maker-Checker Workflow)
   disbursements: defineTable({
