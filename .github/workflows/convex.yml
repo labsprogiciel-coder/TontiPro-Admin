@@ -1,0 +1,68 @@
+# Convex backend CI.
+# - Pull requests: build the web app, then deploy the branch to its own Convex
+#   preview deployment (seeded with mock data). Never touches production.
+# - Push to main: deploy to production, then re-apply role definitions to
+#   existing users (convex-authz keeps a copy of each role's permissions).
+# Only this repo deploys the backend; the mobile app must not.
+# Secrets: CONVEX_DEPLOY_KEY (production), CONVEX_PREVIEW_DEPLOY_KEY (preview).
+name: Convex
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: convex-preview-${{ github.head_ref }}
+      cancel-in-progress: true
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build web app
+        run: pnpm run build
+      # Secrets aren't available to pull requests from forks
+      - name: Deploy to Convex preview
+        if: env.CONVEX_DEPLOY_KEY != ''
+        run: >
+          npx convex deploy
+          --preview-create "${{ github.head_ref }}"
+          --preview-run seed:seedDatabase
+
+  production:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: convex-production
+      cancel-in-progress: false
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy to Convex production
+        run: npx convex deploy
+      - name: Sync role permissions
+        run: npx convex run users:syncRolePermissions
