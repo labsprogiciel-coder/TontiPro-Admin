@@ -94,8 +94,13 @@ const ERROR_PATTERNS = [
 /** Download rows as a semicolon-separated CSV that Excel opens with accents intact. */
 export function downloadCsv(filename, header, rows) {
   const cell = (v) => {
-    const t = v === null || v === undefined ? "" : String(v)
-    return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
+    if (v === null || v === undefined) return ""
+    // Numbers stay numbers (negative balances included)
+    if (typeof v === "number") return String(v)
+    // Text that Excel would run as a formula (names, reasons typed by staff)
+    let t = String(v)
+    if (/^[=+\-@\t\r]/.test(t)) t = "'" + t
+    return /[";\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
   }
   const text = [header, ...rows].map((r) => r.map(cell).join(";")).join("\r\n")
   const url = URL.createObjectURL(new Blob(["\ufeff" + text], { type: "text/csv;charset=utf-8" }))
