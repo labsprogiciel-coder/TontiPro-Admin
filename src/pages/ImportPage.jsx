@@ -45,7 +45,8 @@ export default function ImportPage() {
   const invalid = items.filter((i) => i.error)
   const fields = FIELDS[kind] ?? []
   const missingRequired = fields.filter((f) => f.required && !(mapping[f.key] >= 0))
-  const noCustomerColumn = kind === "transactions" && !(mapping.phoneNumber >= 0) && !(mapping.accountNumber >= 0)
+  const noCustomerColumn =
+    kind === "transactions" && !(mapping.phoneNumber >= 0) && !(mapping.accountNumber >= 0) && !(mapping.legacyClientId >= 0)
   const canImport = ready.length > 0 && missingRequired.length === 0 && !noCustomerColumn && !run
 
   const reset = () => { setFile(null); setMapping({}); setRun(null); setReadError(null) }
@@ -163,7 +164,7 @@ export default function ImportPage() {
           {(missingRequired.length > 0 || noCustomerColumn) && (
             <div style={{ color: "var(--neg)", fontSize: 13, padding: "0 16px 16px" }}>
               {missingRequired.length > 0 && `Colonne obligatoire manquante : ${missingRequired.map((f) => f.label).join(", ")}. `}
-              {noCustomerColumn && "Choisissez la colonne Téléphone ou N° de compte pour retrouver le client."}
+              {noCustomerColumn && "Choisissez la colonne ID client, Téléphone ou N° de compte pour retrouver le client."}
             </div>
           )}
         </div>

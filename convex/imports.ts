@@ -7,7 +7,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { mutation, MutationCtx } from "./_generated/server";
 import { authz } from "./authz";
 import { cleanIdNumber, cleanName, cleanPhone } from "./customers";
-import { customerBalance } from "./transactions";
+import { signedAmount } from "./transactions";
 import { requireUser } from "./users";
 
 /** Rows per call; the page sends a file in batches of this size. */
@@ -16,7 +16,7 @@ const MAX_AMOUNT = 100_000_000;
 const EARLIEST = Date.UTC(2000, 0, 1);
 
 type RowResult =
-  | { row: number; status: "created"; id: string; delta?: number }
+  | { row: number; status: "created" | "updated"; id: string; delta?: number }
   | { row: number; status: "skipped" | "error"; code: string };
 
 /** The importer, who needs data:import; imports land in their own branch. */
@@ -171,6 +171,9 @@ export const importCustomers = mutation({
  * the file is kept as text; the importer is recorded as the agent. No balance
  * check: the file is a record of what happened.
  *
+ * A phone matching several customers (shared phone, several accounts) is
+ * refused with AMBIGUOUS_PHONE rather than guessed.
+ *
  * Re-importing the same file skips every row with ALREADY_IMPORTED: a row
  * with a `reference` (transaction ID in the file) is keyed on it; otherwise
  * on its customer, type, amount, date and `occurrence` (how many identical
@@ -216,14 +219,19 @@ export const importTransactions = mutation({
         } catch {
           // falls through to CUSTOMER_NOT_FOUND
         }
-        const found: Doc<"customers"> | null = phone
+        const found: Doc<"customers">[] = phone
           ? await ctx.db
               .query("customers")
               .withIndex("by_phone", (q) => q.eq("phoneNumber", phone!))
               .filter((q) => q.eq(q.field("branchId"), branchId))
-              .first()
-          : null;
-        customerId = found?._id;
+              .take(2)
+          : [];
+        // A phone may be shared by several accounts: never guess which one
+        if (found.length > 1) {
+          results.push({ row: r.row, status: "error", code: "AMBIGUOUS_PHONE" });
+          continue;
+        }
+        customerId = found[0]?._id;
       }
       if (!customerId) {
         results.push({ row: r.row, status: "error", code: "CUSTOMER_NOT_FOUND" });
@@ -274,12 +282,17 @@ export const ADJUSTMENT_LABEL = "Ajustement import (solde de la sauvegarde)";
 
 /**
  * Bring imported customers' balances to the balance their old-app backup
- * showed, after their history was imported: for each customer (by old-app
- * client ID) whose balance differs from `balance`, record one imported
- * deposit or withdrawal for the difference, dated now and labelled
- * ADJUSTMENT_LABEL. A customer already at that balance is `skipped` with
- * BALANCE_OK; a customer already adjusted once is skipped with
- * ALREADY_IMPORTED, so running the same backup again changes nothing.
+ * showed: for each customer (by old-app client ID), keep one imported
+ * adjustment, labelled ADJUSTMENT_LABEL, equal to `balance` minus the sum of
+ * the customer's other imported history. Movements recorded in the app since
+ * the import are left out of the sum, so running the same backup again later
+ * never cancels them.
+ *
+ * The adjustment is recomputed on every run: `created` when it is new,
+ * `updated` when imported history changed since (e.g. the clients file was
+ * imported before the transactions file), removed when no longer needed.
+ * Unchanged: `skipped` with BALANCE_OK (none needed) or ALREADY_IMPORTED. An
+ * adjustment a supervisor reversed is left alone.
  */
 export const alignBalances = mutation({
   args: {
@@ -305,22 +318,38 @@ export const alignBalances = mutation({
         continue;
       }
       const clientId = `import:align:${customerId}`;
-      const existing = await ctx.db
+      const history = await ctx.db
         .query("transactions")
-        .withIndex("by_client_id", (q) => q.eq("clientId", clientId))
-        .first();
-      if (existing) {
+        .withIndex("by_customer", (q) => q.eq("customerId", customerId))
+        .collect();
+      const existing = history.find((t) => t.clientId === clientId);
+      if (existing?.status === "reversed") {
         results.push({ row: r.row, status: "skipped", code: "ALREADY_IMPORTED" });
         continue;
       }
-      const diff = r.balance - (await customerBalance(ctx, customerId));
-      if (diff === 0) {
-        results.push({ row: r.row, status: "skipped", code: "BALANCE_OK" });
+      const imported = history
+        .filter((t) => t.imported && t.status === "completed" && t.clientId !== clientId)
+        .reduce((s, t) => s + signedAmount(t), 0);
+      const needed = r.balance - imported;
+      const current = existing ? signedAmount(existing) : 0;
+
+      if (needed === current) {
+        results.push({ row: r.row, status: "skipped", code: existing ? "ALREADY_IMPORTED" : "BALANCE_OK" });
+        continue;
+      }
+      if (existing && needed === 0) {
+        await ctx.db.delete(existing._id);
+        results.push({ row: r.row, status: "updated", id: existing._id, delta: -current });
+        continue;
+      }
+      const fields = { type: needed > 0 ? ("deposit" as const) : ("withdrawal" as const), amount: Math.abs(needed) };
+      if (existing) {
+        await ctx.db.patch(existing._id, fields);
+        results.push({ row: r.row, status: "updated", id: existing._id, delta: needed - current });
         continue;
       }
       const id = await ctx.db.insert("transactions", {
-        type: diff > 0 ? "deposit" : "withdrawal",
-        amount: Math.abs(diff),
+        ...fields,
         currency: organization?.currency ?? "XOF",
         customerId,
         agentId: importer._id,
@@ -332,7 +361,7 @@ export const alignBalances = mutation({
         imported: true,
         importedAgentName: ADJUSTMENT_LABEL,
       });
-      results.push({ row: r.row, status: "created", id, delta: diff });
+      results.push({ row: r.row, status: "created", id, delta: needed });
     }
     return results;
   },

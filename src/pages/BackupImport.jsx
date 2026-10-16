@@ -95,6 +95,10 @@ export default function BackupImport({ onBusy }) {
   }, [clients, txs])
 
   const start = async () => {
+    if (!txs && !window.confirm(
+      "Sans le fichier transactions, chaque Solde sera enregistré en une seule ligne d'ajustement, sans historique. " +
+      "Si vous importez l'historique plus tard, relancez la sauvegarde avec les deux fichiers pour corriger ces ajustements. Continuer ?",
+    )) return
     const results = { clients: [], tx: [], align: [] }
     const local = (file) => (file ? file.items.filter((i) => i.error).map((i) => ({ row: i.row, status: "error", code: i.error })) : [])
     results.clients.push(...local(clients))
@@ -135,16 +139,17 @@ export default function BackupImport({ onBusy }) {
 
   const report = run
     ? STEPS.flatMap((s) => run.results[s.key]
-        .filter((r) => r.status !== "created" || s.key === "align")
+        .filter((r) => !(r.status === "created" && s.key !== "align"))
         .filter((r) => r.code !== "BALANCE_OK")
         .map((r) => ({ ...r, file: s.label, client: labels[s.key].get(r.row) || "—" })))
     : []
-  const statusLabel = (r) => r.status === "created" ? "Ajusté" : r.status === "skipped" ? "Ignorée" : "Erreur"
-  const reason = (r) => r.status === "created"
+  const statusLabel = (r) =>
+    r.status === "created" ? "Ajusté" : r.status === "updated" ? "Ajustement corrigé" : r.status === "skipped" ? "Ignorée" : "Erreur"
+  const reason = (r) => r.status === "created" || r.status === "updated"
     ? `Solde aligné sur la sauvegarde (${r.delta > 0 ? "+" : "−"}${fmt(Math.abs(r.delta))} F)`
     : REASONS[r.code] ?? r.code
   const busy = run && !run.finished
-  const created = (k) => (run ? run.results[k].filter((r) => r.status === "created").length : 0)
+  const created = (k) => (run ? run.results[k].filter((r) => r.status === "created" || r.status === "updated").length : 0)
 
   return (
     <div>
@@ -208,7 +213,7 @@ export default function BackupImport({ onBusy }) {
                       <td className="cell-sub">{r.file}</td>
                       <td className="cell-sub">{r.row}</td>
                       <td>{r.client}</td>
-                      <td><span className={"tag " + (r.status === "created" ? "actif" : r.status === "skipped" ? "attente" : "archive")}>{statusLabel(r)}</span></td>
+                      <td><span className={"tag " + (r.status === "created" || r.status === "updated" ? "actif" : r.status === "skipped" ? "attente" : "archive")}>{statusLabel(r)}</span></td>
                       <td>{reason(r)}</td>
                     </tr>
                   ))}

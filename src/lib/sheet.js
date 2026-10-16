@@ -162,6 +162,14 @@ export function parseTime(v) {
   return (h * 60 + min) * 60000
 }
 
+/** Time of day (ms) carried by a date cell such as "15/01/2024 13:46"; 0 if none. */
+function timeOfDateCell(v) {
+  if (v instanceof Date) return parseTime(v) ?? 0
+  if (typeof v === "number") return parseTime(v - Math.floor(v)) ?? 0
+  const rest = text(v).split(/[ T]/).slice(1).join(" ").trim()
+  return rest ? parseTime(rest) ?? 0 : 0
+}
+
 const DEPOSIT_WORDS = ["depot", "deposit", "d", "versement", "cotisation", "credit", "entree", "collecte", "+"]
 const WITHDRAWAL_WORDS = ["retrait", "withdrawal", "r", "debit", "sortie", "paiement", "decaissement", "-"]
 
@@ -225,8 +233,10 @@ export function buildItems(kind, dataRows, mapping) {
       if (!t) return { row, error: "INVALID_TYPE", label }
       type = t
     }
-    const day = parseDate(cell(r, mapping.date))
-    const time = parseTime(cell(r, mapping.time))
+    const dateCell = cell(r, mapping.date)
+    const day = parseDate(dateCell)
+    // Without a time column, keep the time of a combined date-time cell
+    const time = mapping.time >= 0 ? parseTime(cell(r, mapping.time)) : timeOfDateCell(dateCell)
     if (day === null || time === null) return { row, error: "INVALID_DATE", label }
     const payload = { row, type, amount: Math.abs(signed), date: day + time }
     if (legacyClientId) payload.legacyClientId = legacyClientId
@@ -264,6 +274,7 @@ export const IMPORT_REASONS = {
   INVALID_BALANCE:    "Solde illisible",
   CUSTOMER_REQUIRED:  "ID client, téléphone ou n° de compte manquant",
   CUSTOMER_NOT_FOUND: "Client introuvable dans votre agence",
+  AMBIGUOUS_PHONE:    "Téléphone partagé par plusieurs comptes : précisez le n° de compte",
   INVALID_AMOUNT:     "Montant invalide",
   INVALID_TYPE:       "Type inconnu (attendu : Dépôt, Collecte ou Retrait)",
   INVALID_DATE:       "Date ou heure invalide, ou dans le futur",
