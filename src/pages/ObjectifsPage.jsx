@@ -274,7 +274,7 @@ export default function ObjectifsPage() {
     })
     return r
   }, [goals, q, seg, cat, agent, sortBy, sortDir])
-  const paged = usePaged(filtered, 25)
+  const paged = usePaged(filtered)
 
   const counts = {
     tous:     goals.length,

@@ -72,7 +72,7 @@ export default function ProductsPage() {
   const totalEncours = products.reduce((s, p) => s + p.encours, 0)
   const opened30 = products.reduce((s, p) => s + p.opened30, 0)
 
-  const paged = usePaged(filtered, 24)
+  const paged = usePaged(filtered)
   const usedFamilies = new Set(products.filter(p => p.status === "actif").map(p => p.family)).size
 
   const kpis = [
