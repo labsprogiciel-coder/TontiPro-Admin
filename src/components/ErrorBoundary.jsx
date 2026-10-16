@@ -1,10 +1,17 @@
 import { Component } from 'react'
+import { Sentry } from '../sentry'
 
 export default class ErrorBoundary extends Component {
   state = { error: null }
 
   static getDerivedStateFromError(error) {
     return { error }
+  }
+
+  componentDidCatch(error, info) {
+    // A lapsed session isn't a bug
+    if (String(error.message).includes('Unauthenticated')) return
+    Sentry.captureException(error, { contexts: { react: { componentStack: info.componentStack ?? '' } } })
   }
 
   render() {

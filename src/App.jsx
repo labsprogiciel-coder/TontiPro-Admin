@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Authenticated, AuthLoading, Unauthenticated, useQuery } from 'convex/react'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { api } from '../convex/_generated/api'
@@ -14,6 +14,7 @@ import SettingsPage from './pages/SettingsPage'
 import ProductsPage from './pages/ProductsPage'
 import ReconciliationPage from './pages/ReconciliationPage'
 import ImportPage from './pages/ImportPage'
+import { setSentryUser } from './sentry'
 import { canOpenPage, hasDashboardAccess, landingPage } from './access'
 
 const PAGES = {
@@ -43,6 +44,10 @@ export default function App() {
 function ActiveStaffGate() {
   const me = useQuery(api.users.me)
   const { signOut } = useAuthActions()
+  const meId = me === undefined ? undefined : (me?.id ?? null)
+  useEffect(() => {
+    if (meId !== undefined) setSentryUser(meId)
+  }, [meId])
   if (me === undefined) return <Loading />
   if (me?.active && hasDashboardAccess(me.can)) return <Shell can={me.can} />
   const message = me?.active
