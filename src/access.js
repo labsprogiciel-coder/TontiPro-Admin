@@ -4,10 +4,11 @@
 
 const BACK_OFFICE = new Set(["dashboard", "clients", "tx", "objectifs", "produits", "reconciliation"])
 
-/** True if the page's data is readable: back office needs `audit`, Agents also opens to IT. */
+/** True if the page's data is readable: back office needs `audit`, Agents also opens to IT, Import needs `importData`. */
 export function canOpenPage(page, can = {}) {
   if (page === "settings") return true
   if (page === "agents") return !!(can.audit || can.manageStaff || can.bind)
+  if (page === "import") return !!can.importData
   if (BACK_OFFICE.has(page)) return !!can.audit
   return false
 }

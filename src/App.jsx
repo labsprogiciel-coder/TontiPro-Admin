@@ -13,6 +13,7 @@ import ObjectifsPage from './pages/ObjectifsPage'
 import SettingsPage from './pages/SettingsPage'
 import ProductsPage from './pages/ProductsPage'
 import ReconciliationPage from './pages/ReconciliationPage'
+import ImportPage from './pages/ImportPage'
 import { canOpenPage, hasDashboardAccess, landingPage } from './access'
 
 const PAGES = {
@@ -23,6 +24,7 @@ const PAGES = {
   objectifs:      ObjectifsPage,
   produits:       ProductsPage,
   reconciliation: ReconciliationPage,
+  import:         ImportPage,
   settings:       SettingsPage,
 }
 

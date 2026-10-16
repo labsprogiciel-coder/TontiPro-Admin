@@ -34,6 +34,9 @@ const permissions = definePermissions({
   },
   staff: {
     manage: true,      // Create staff, change roles, suspend, issue activation codes
+  },
+  data: {
+    import: true,      // Load customers and past transactions from a spreadsheet
   }
 });
 
@@ -60,6 +63,7 @@ const roles = defineRoles(permissions, {
     kyc: ["validate"],
     customers: ["verify_identity", "edit_sensitive"],
     disbursements: ["approve"],
+    data: ["import"],
   },
 
   // Specialized back-office role
@@ -69,12 +73,14 @@ const roles = defineRoles(permissions, {
     // Only the accountant or a system-level role should execute the money move
     disbursements: ["execute"], 
     customers: ["verify_identity"],
+    data: ["import"],
   },
 
   // System management
   it_admin: {
     devices: ["bind"],
     staff: ["manage"],
+    data: ["import"],
     // Usually IT shouldn't have 'collect' or 'reverse' permissions (Separation of Duties)
   },
 });

@@ -98,6 +98,11 @@ export default defineSchema({
     offline: v.optional(v.boolean()),
     // That offline withdrawal took the customer's balance below zero
     overdraft: v.optional(v.boolean()),
+    // Past movement loaded from a spreadsheet (imports.ts): counts in the
+    // customer's balance, never in an agent's cash or own collections
+    imported: v.optional(v.boolean()),
+    // Agent named in the spreadsheet; agentId is the importer
+    importedAgentName: v.optional(v.string()),
   })
     .index("by_agent_date", ["agentId"]) // Convex appends _creationTime to every index
     .index("by_branch", ["branchId"])

@@ -17,10 +17,12 @@ const metadataValidator = v.object({
   savingsGoal: v.optional(v.number()),
   accountNumber: v.optional(v.string()),
   email: v.optional(v.string()),
+  // Client ID in the old app's backup, set by imports.ts to match its transactions
+  legacyId: v.optional(v.string()),
 });
 
 /** Trim a name; throw NAME_REQUIRED if empty or longer than 200 characters. */
-function cleanName(name: string) {
+export function cleanName(name: string) {
   const fullName = name.trim();
   if (!fullName || fullName.length > 200) throw new ConvexError("NAME_REQUIRED");
   return fullName;
@@ -31,14 +33,14 @@ function cleanName(name: string) {
  * same number typed two ways is caught as a duplicate. Throw INVALID_PHONE
  * unless 8 to 15 digits remain.
  */
-function cleanPhone(phone: string) {
+export function cleanPhone(phone: string) {
   const compact = phone.replace(/[\s.\-()]/g, "").replace(/^00/, "+");
   if (!/^\+?\d{8,15}$/.test(compact)) throw new ConvexError("INVALID_PHONE");
   return compact;
 }
 
 /** Trim an ID document number; throw INVALID_ID_NUMBER past 50 characters. */
-function cleanIdNumber(idNumber: string) {
+export function cleanIdNumber(idNumber: string) {
   const trimmed = idNumber.trim();
   if (trimmed.length > 50) throw new ConvexError("INVALID_ID_NUMBER");
   return trimmed;

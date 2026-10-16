@@ -154,10 +154,13 @@ function movementRows(data: Ledger) {
     timestamp: t.timestamp,
     customerId: t.customerId,
     client: customers.get(t.customerId)?.fullName ?? "—",
-    agent: users.get(t.agentId)?.fullName ?? "—",
+    // An imported row's agent is the importer; show the name from the file
+    agent: t.imported
+      ? t.importedAgentName ?? `${users.get(t.agentId)?.fullName ?? "—"} (import)`
+      : users.get(t.agentId)?.fullName ?? "—",
     branch: branches.get(t.branchId)?.name ?? "—",
-    tpe: t.tpeId,
-    channel: "TPE",
+    tpe: t.imported ? "—" : t.tpeId,
+    channel: t.imported ? "Import" : "TPE",
     status: t.status === "completed" ? "validée" : "annulée",
     reason: t.reversalReason ?? null,
     reversedBy: t.reversedBy ? users.get(t.reversedBy)?.fullName ?? null : null,
@@ -306,7 +309,8 @@ export const listAgents = query({
       data.users.map(async (u) => {
         const device = devices.find((d) => d.assignedTo === u._id) ?? null;
         const monthTx = data.transactions.filter(
-          (t) => t.agentId === u._id && t.status === "completed" && t.timestamp >= monthStart,
+          (t) =>
+            t.agentId === u._id && t.status === "completed" && !t.imported && t.timestamp >= monthStart,
         );
         let roles: string[] = [];
         let canCollect = false;
@@ -394,6 +398,7 @@ export const listReconciliations = query({
         (t) =>
           t.agentId === r.agentId &&
           t.status === "completed" &&
+          !t.imported &&
           t.timestamp >= dayStart &&
           t.timestamp < dayStart + DAY,
       );
@@ -439,7 +444,9 @@ export const openSessions = query({
 
     const sessions = [];
     for (const u of users) {
-      const txs = transactions.filter((t) => t.agentId === u._id && t.status === "completed");
+      const txs = transactions.filter(
+        (t) => t.agentId === u._id && t.status === "completed" && !t.imported,
+      );
       if (txs.length === 0) continue;
       const done = await ctx.db
         .query("reconciliations")
