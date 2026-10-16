@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
+import { useMutation, useQuery } from 'convex/react'
+import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { fmt, KPI, PageHeader, SearchInput } from '../components'
+import { downloadCsv, errorMessage, fmt, KPI, Loading, PageHeader, SearchInput } from '../components'
 
 const PRODUCT_FAMILIES = [
   { k: "epargne",   label: "Épargne",        color: "var(--brand)",         icon: "Wallet" },
@@ -9,66 +11,6 @@ const PRODUCT_FAMILIES = [
   { k: "assurance", label: "Microassurance", color: "oklch(0.6 0.11 230)",  icon: "Shield" },
 ]
 
-const PRODUCTS_SEED = [
-  { id: "PRD-CARNET", code: "CARNET", name: "Carnet d'épargne", family: "epargne",
-    summary: "Compte d'épargne classique avec dépôts libres et retraits sur préavis 48 h.",
-    status: "actif", rate: 3.5, durationMin: 0, durationMax: 0,
-    minDeposit: 1000, maxBalance: 5000000, fees: 0, feesUnit: "FCFA", grace: 0,
-    kycLevel: "Standard", targets: ["Particuliers", "Coopératives"],
-    branches: ["Bobo-Dioulasso", "Banfora", "Hounde"],
-    clients: 84, encours: 2840000, opened30: 12,
-    created: "2023-04-12", updated: "2026-02-08" },
-  { id: "PRD-PLAN", code: "PLAN+", name: "Plan+ projet", family: "epargne",
-    summary: "Épargne bloquée sur objectif. Bonus de 1,2% à l'échéance si l'objectif est atteint.",
-    status: "actif", rate: 5.0, durationMin: 6, durationMax: 36,
-    minDeposit: 5000, maxBalance: 10000000, fees: 500, feesUnit: "FCFA", grace: 0,
-    kycLevel: "Standard", targets: ["Particuliers"],
-    branches: ["Bobo-Dioulasso", "Banfora", "Hounde"],
-    clients: 41, encours: 1620000, opened30: 7,
-    created: "2024-01-20", updated: "2026-04-22" },
-  { id: "PRD-TONTINE", code: "TONTINE", name: "Tontine hebdomadaire", family: "tontine",
-    summary: "Cotisations hebdomadaires en groupe de 8 à 20 membres, redistribution par tirage.",
-    status: "actif", rate: 0, durationMin: 2, durationMax: 12,
-    minDeposit: 500, maxBalance: 0, fees: 250, feesUnit: "FCFA", grace: 0,
-    kycLevel: "Allégée", targets: ["Particuliers", "Groupes"],
-    branches: ["Bobo-Dioulasso", "Banfora"],
-    clients: 56, encours: 480000, opened30: 4,
-    created: "2023-06-04", updated: "2025-11-19" },
-  { id: "PRD-CRED-COM", code: "CRED-COM", name: "Crédit commerçant", family: "credit",
-    summary: "Prêt court-terme pour fonds de roulement, remboursement hebdomadaire.",
-    status: "actif", rate: 18, durationMin: 3, durationMax: 12,
-    minDeposit: 25000, maxBalance: 1500000, fees: 2, feesUnit: "%", grace: 7,
-    kycLevel: "Renforcée", targets: ["TPE", "Commerçants"],
-    branches: ["Bobo-Dioulasso", "Banfora"],
-    clients: 28, encours: 6420000, opened30: 3,
-    created: "2024-09-02", updated: "2026-03-30" },
-  { id: "PRD-CRED-AGRI", code: "CRED-AGRI", name: "Crédit campagne agricole", family: "credit",
-    summary: "Financement saisonnier intrants + différé de remboursement à la récolte.",
-    status: "actif", rate: 14, durationMin: 6, durationMax: 9,
-    minDeposit: 50000, maxBalance: 800000, fees: 1.5, feesUnit: "%", grace: 90,
-    kycLevel: "Renforcée", targets: ["Agriculteurs", "Coopératives"],
-    branches: ["Banfora", "Hounde"],
-    clients: 14, encours: 2120000, opened30: 1,
-    created: "2024-10-15", updated: "2026-01-12" },
-  { id: "PRD-MICRO-S", code: "MICRO-S", name: "Microassurance santé", family: "assurance",
-    summary: "Forfait soins primaires familiaux, partenariat AssurFasso.",
-    status: "brouillon", rate: 0, durationMin: 12, durationMax: 12,
-    minDeposit: 1500, maxBalance: 0, fees: 0, feesUnit: "FCFA", grace: 0,
-    kycLevel: "Standard", targets: ["Particuliers", "Familles"],
-    branches: ["Bobo-Dioulasso"],
-    clients: 0, encours: 0, opened30: 0,
-    created: "2026-04-12", updated: "2026-05-02" },
-  { id: "PRD-EDUC", code: "EDUC", name: "Épargne scolarité", family: "epargne",
-    summary: "Plan d'épargne dédié aux frais de scolarité, déblocage en août/septembre.",
-    status: "archive", rate: 4.2, durationMin: 12, durationMax: 24,
-    minDeposit: 2000, maxBalance: 3000000, fees: 0, feesUnit: "FCFA", grace: 0,
-    kycLevel: "Standard", targets: ["Particuliers", "Parents"],
-    branches: ["Bobo-Dioulasso"],
-    clients: 9, encours: 320000, opened30: 0,
-    created: "2022-08-10", updated: "2025-09-01" },
-]
-
-const ALL_BRANCHES = ["Bobo-Dioulasso", "Banfora", "Hounde"]
 const ALL_TARGETS = ["Particuliers", "TPE", "Commerçants", "Agriculteurs", "Coopératives", "Familles", "Groupes", "Parents"]
 const KYC_LEVELS = ["Allégée", "Standard", "Renforcée"]
 
@@ -80,7 +22,11 @@ const STATUS_META = {
 
 function familyMeta(k) { return PRODUCT_FAMILIES.find(f => f.k === k) || PRODUCT_FAMILIES[0] }
 
-function blankProduct() {
+// Fields saveProduct takes (the rest of a row is computed by the server)
+const PRODUCT_FIELDS = ["code", "name", "family", "summary", "status", "rate", "durationMin", "durationMax",
+  "minDeposit", "maxBalance", "fees", "feesUnit", "grace", "kycLevel", "targets", "branchIds"]
+
+function blankProduct(branchId) {
   return {
     id: null, code: "", name: "", family: "epargne", summary: "",
     status: "brouillon",
@@ -89,14 +35,16 @@ function blankProduct() {
     fees: 0, feesUnit: "FCFA", grace: 0,
     kycLevel: "Standard",
     targets: ["Particuliers"],
-    branches: ["Bobo-Dioulasso"],
-    clients: 0, encours: 0, opened30: 0,
-    created: "—", updated: "—",
+    branchIds: branchId ? [branchId] : [],
   }
 }
 
+/** Product catalogue of the organization, with uptake among the branch's clients. */
 export default function ProductsPage() {
-  const [products, setProducts] = useState(PRODUCTS_SEED)
+  const data = useQuery(api.portfolio.listProducts)
+  const me = useQuery(api.users.me)
+  const canEdit = !!me?.can?.managePortfolio
+  const products = useMemo(() => data?.products ?? [], [data])
   const [q, setQ] = useState("")
   const [seg, setSeg] = useState("tous")
   const [fam, setFam] = useState("toutes")
@@ -123,35 +71,30 @@ export default function ProductsPage() {
   const totalEncours = products.reduce((s, p) => s + p.encours, 0)
   const opened30 = products.reduce((s, p) => s + p.opened30, 0)
 
+  const usedFamilies = new Set(products.filter(p => p.status === "actif").map(p => p.family)).size
+
   const kpis = [
-    { label: "Produits actifs",  value: String(counts.actif), unit: `/ ${counts.tous}`, delta: "+1", dir: "up", note: "ce trimestre", icon: "wallet" },
-    { label: "Encours total",    value: fmt(totalEncours),    unit: "FCFA", delta: "+5,8%", dir: "up", note: "vs. avr.", icon: "coin" },
-    { label: "Souscriptions",    value: String(totalClients), unit: "comptes", delta: `+${opened30}`, dir: "up", note: "30 derniers j", icon: "users" },
-    { label: "Familles",         value: String(PRODUCT_FAMILIES.length), unit: "", delta: "stable", dir: "up", note: "épargne, crédit, …", icon: "receipt" },
+    { label: "Produits actifs",  value: String(counts.actif), unit: `/ ${counts.tous}`, note: `${counts.brouillon} en brouillon`, icon: "wallet" },
+    { label: "Encours",          value: fmt(totalEncours),    unit: "FCFA", note: "clients de l'agence", icon: "coin" },
+    { label: "Clients équipés",  value: String(totalClients), unit: "clients", note: `dont ${opened30} inscrits ces 30 j`, icon: "users" },
+    { label: "Familles",         value: String(usedFamilies), unit: `/ ${PRODUCT_FAMILIES.length}`, note: "avec un produit actif", icon: "receipt" },
   ]
 
-  const onSave = (p) => {
-    setProducts(prev => {
-      const id = p.id || ("PRD-" + (p.code || "NEW").replace(/\s+/g, "-").toUpperCase())
-      const np = { ...p, id, updated: "Aujourd'hui" }
-      const idx = prev.findIndex(x => x.id === p.id)
-      if (idx === -1) return [{ ...np, created: "Aujourd'hui", clients: 0, encours: 0, opened30: 0 }, ...prev]
-      const next = [...prev]
-      next[idx] = np
-      return next
-    })
-    setEditor(null)
-  }
+  const onDuplicate = (p) => setEditor({
+    mode: "create",
+    product: { ...p, id: null, code: (p.code + "-2").slice(0, 20), name: p.name + " (copie)", status: "brouillon" },
+  })
 
-  const onDuplicate = (p) => {
-    setProducts(prev => [{
-      ...p,
-      id: p.id + "-COPY-" + Date.now().toString(36).slice(-3),
-      code: p.code + "-2",
-      name: p.name + " (copie)",
-      status: "brouillon", clients: 0, encours: 0, opened30: 0,
-    }, ...prev])
-  }
+  const exportCsv = () => downloadCsv(
+    "produits.csv",
+    ["Code", "Nom", "Famille", "Statut", "Taux (%)", "Durée min (mois)", "Durée max (mois)", "Dépôt min (FCFA)",
+     "Plafond (FCFA)", "Frais", "Unité frais", "Grâce (j)", "KYC", "Agences", "Cibles", "Clients", "Encours (FCFA)"],
+    filtered.map(p => [p.code, p.name, familyMeta(p.family).label, STATUS_META[p.status].label, p.rate, p.durationMin,
+      p.durationMax, p.minDeposit, p.maxBalance, p.fees, p.feesUnit, p.grace, p.kycLevel, p.branches.join(", "),
+      p.targets.join(", "), p.clients, p.encours]),
+  )
+
+  if (data === undefined) return <Loading />
 
   return (
     <div className="products-page">
@@ -159,10 +102,13 @@ export default function ProductsPage() {
 
       </PageHeader>
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <button className="btn"><I.Export size={14}/>Exporter</button>
-        <button className="btn brand" onClick={() => setEditor({ mode: "create", product: blankProduct() })}>
-          <I.Plus size={14} stroke="white"/>Nouveau produit
-        </button>
+        <SearchInput placeholder="Nom ou code…" value={q} onChange={e => setQ(e.target.value)} />
+        <button className="btn" onClick={exportCsv} disabled={filtered.length === 0}><I.Export size={14}/>Exporter</button>
+        {canEdit && (
+          <button className="btn brand" onClick={() => setEditor({ mode: "create", product: blankProduct(me?.branchId) })}>
+            <I.Plus size={14} stroke="white"/>Nouveau produit
+          </button>
+        )}
       </div>
       <section className="kpi-row">
         {kpis.map(k => <KPI key={k.label} k={k}/>)}
@@ -222,14 +168,16 @@ export default function ProductsPage() {
         {view === "cards" ? (
           <div className="prod-grid">
             {filtered.map(p => (
-              <ProductCard key={p.id} p={p}
+              <ProductCard key={p.id} p={p} canEdit={canEdit}
                 onEdit={() => setEditor({ mode: "edit", product: p })}
                 onDuplicate={() => onDuplicate(p)}
               />
             ))}
             {filtered.length === 0 && (
               <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13, gridColumn: "1/-1" }}>
-                Aucun produit ne correspond aux filtres.
+                {products.length === 0
+                  ? canEdit ? "Le catalogue est vide : créez le premier produit." : "Le catalogue est vide."
+                  : "Aucun produit ne correspond aux filtres."}
               </div>
             )}
           </div>
@@ -295,15 +243,16 @@ export default function ProductsPage() {
         <ProductEditor
           mode={editor.mode}
           initial={editor.product}
+          branches={data.branches}
+          readOnly={!canEdit}
           onClose={() => setEditor(null)}
-          onSave={onSave}
         />
       )}
     </div>
   )
 }
 
-function ProductCard({ p, onEdit, onDuplicate }) {
+function ProductCard({ p, canEdit, onEdit, onDuplicate }) {
   const f = familyMeta(p.family)
   const sm = STATUS_META[p.status]
   const Ic = I[f.icon]
@@ -342,12 +291,14 @@ function ProductCard({ p, onEdit, onDuplicate }) {
         <div className="prod-usage">
           <I.Users size={12}/> <strong>{p.clients}</strong> clients · <strong>{fmt(p.encours)}</strong> FCFA
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          <button className="btn ghost sm" onClick={e => { e.stopPropagation(); onDuplicate() }} title="Dupliquer">
-            <I.Folder size={12}/>
-          </button>
-          <button className="btn sm" onClick={e => { e.stopPropagation(); onEdit() }}>Modifier</button>
-        </div>
+        {canEdit && (
+          <div style={{ display: "flex", gap: 4 }}>
+            <button className="btn ghost sm" onClick={e => { e.stopPropagation(); onDuplicate() }} title="Dupliquer">
+              <I.Folder size={12}/>
+            </button>
+            <button className="btn sm" onClick={e => { e.stopPropagation(); onEdit() }}>Modifier</button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -360,10 +311,28 @@ const EDITOR_TABS = [
   { k: "apercu",       label: "Aperçu",        icon: "Star" },
 ]
 
-function ProductEditor({ mode, initial, onClose, onSave }) {
+function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
   const [tab, setTab] = useState("identite")
   const [p, setP] = useState({ ...initial })
   const isNew = mode === "create"
+  const saveProduct = useMutation(api.portfolio.saveProduct)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const branchName = (id) => branches.find(b => b.id === id)?.name ?? "—"
+
+  const onSave = async (product) => {
+    setBusy(true)
+    setError("")
+    try {
+      const args = Object.fromEntries(PRODUCT_FIELDS.map(k => [k, product[k]]))
+      await saveProduct(isNew ? args : { id: product.id, ...args })
+      onClose()
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const set = (k, v) => setP(prev => ({ ...prev, [k]: v }))
 
@@ -518,10 +487,10 @@ function ProductEditor({ mode, initial, onClose, onSave }) {
               <div className="field">
                 <label className="field-label">Agences habilitées</label>
                 <div className="chip-picker">
-                  {ALL_BRANCHES.map(b => (
-                    <button key={b} className={"chip-pick " + (p.branches.includes(b) ? "on" : "")}
-                            onClick={() => toggleArr("branches", b)}>
-                      {p.branches.includes(b) && <I.Check size={12}/>}{b}
+                  {branches.map(b => (
+                    <button key={b.id} className={"chip-pick " + (p.branchIds.includes(b.id) ? "on" : "")}
+                            onClick={() => toggleArr("branchIds", b.id)}>
+                      {p.branchIds.includes(b.id) && <I.Check size={12}/>}{b.name}
                     </button>
                   ))}
                 </div>
@@ -577,7 +546,7 @@ function ProductEditor({ mode, initial, onClose, onSave }) {
                   <dt>Frais</dt><dd>{p.fees > 0 ? `${p.fees} ${p.feesUnit}` : "Aucun"}</dd>
                   <dt>Délai de grâce</dt><dd>{p.grace > 0 ? `${p.grace} j` : "—"}</dd>
                   <dt>Plafond</dt><dd>{p.maxBalance ? `${fmt(p.maxBalance)} FCFA` : "Illimité"}</dd>
-                  <dt>Agences</dt><dd>{p.branches.join(", ") || "—"}</dd>
+                  <dt>Agences</dt><dd>{p.branchIds.map(branchName).join(", ") || "—"}</dd>
                   <dt>Cibles</dt><dd>{p.targets.join(", ") || "—"}</dd>
                 </dl>
               </div>
@@ -585,16 +554,23 @@ function ProductEditor({ mode, initial, onClose, onSave }) {
           )}
         </div>
 
+        {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 12.5, padding: "0 20px 8px" }}>{error}</div>}
         <div className="drawer-foot">
-          <button className="btn brand" onClick={() => onSave(p)}>
-            <I.Check size={14} stroke="white"/>{isNew ? "Créer le produit" : "Enregistrer"}
-          </button>
-          <button className="btn" onClick={onClose}>Annuler</button>
-          {!isNew && (
-            <button className="btn ghost sm" style={{ marginLeft: "auto", color: "var(--neg)" }}
-                    onClick={() => { onSave({ ...p, status: "archive" }) }}>
-              Archiver
-            </button>
+          {readOnly ? (
+            <button className="btn" onClick={onClose}>Fermer</button>
+          ) : (
+            <>
+              <button className="btn brand" disabled={busy} onClick={() => onSave(p)}>
+                <I.Check size={14} stroke="white"/>{isNew ? "Créer le produit" : "Enregistrer"}
+              </button>
+              <button className="btn" onClick={onClose}>Annuler</button>
+              {!isNew && p.status !== "archive" && (
+                <button className="btn ghost sm" style={{ marginLeft: "auto", color: "var(--neg)" }} disabled={busy}
+                        onClick={() => onSave({ ...initial, status: "archive" })}>
+                  Archiver
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -131,6 +131,7 @@ function customerRows(data: Ledger, now: number) {
       monthlyAvg: monthTotal,
       lastTx,
       agent: users.get(c.onboardedBy)?.fullName ?? "—",
+      productId: c.productId ?? null,
       branch: branch?.name ?? "—",
       village: branch?.location.split(",")[0] ?? "—",
     };

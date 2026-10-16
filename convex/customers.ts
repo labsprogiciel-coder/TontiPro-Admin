@@ -15,6 +15,9 @@ const metadataValidator = v.object({
   collectionFrequency: v.optional(v.string()),
   collectionDays: v.optional(v.array(v.number())),
   savingsGoal: v.optional(v.number()),
+  // Set from the dashboard (portfolio.ts); listed so a round trip validates
+  goalCategory: v.optional(v.string()),
+  goalDeadline: v.optional(v.number()),
   accountNumber: v.optional(v.string()),
   email: v.optional(v.string()),
   // Client ID in the old app's backup, set by imports.ts to match its transactions

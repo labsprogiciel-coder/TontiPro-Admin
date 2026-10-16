@@ -1,9 +1,46 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { fmt, fmtDateTime, initials, relTime, KPI, Loading, PageHeader, SearchInput } from '../components'
+import { errorMessage, fmt, fmtDateTime, initials, relTime, KPI, Loading, PageHeader, SearchInput } from '../components'
 import Novu from '../components/Inbox'
+
+/**
+ * The client's product: a picker of the active products offered in the
+ * client's branch for portfolio managers, the product name for everyone else.
+ */
+function ProductField({ client }) {
+  const me = useQuery(api.users.me)
+  const catalogue = useQuery(api.portfolio.listProducts)
+  const setProduct = useMutation(api.portfolio.setCustomerProduct)
+  const [error, setError] = useState("")
+  const [busy, setBusy] = useState(false)
+  if (catalogue === undefined) return <span className="cell-sub">…</span>
+  const current = catalogue.products.find(p => p.id === client.productId)
+  if (!me?.can?.managePortfolio) return <>{current?.name ?? "—"}</>
+
+  const branchId = me.branchId
+  const options = catalogue.products.filter(p => p.status === "actif" && p.branchIds.includes(branchId))
+  const change = async (value) => {
+    setBusy(true)
+    setError("")
+    try { await setProduct({ customerId: client.id, productId: value || null }) }
+    catch (e) { setError(errorMessage(e)) }
+    finally { setBusy(false) }
+  }
+  return (
+    <>
+      <select className="filter-select" value={client.productId ?? ""} disabled={busy}
+              onChange={e => change(e.target.value)}>
+        <option value="">Aucun produit</option>
+        {/* Keep showing a product that was archived since it was assigned */}
+        {current && !options.includes(current) && <option value={current.id}>{current.name} (inactif)</option>}
+        {options.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+      {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 12, marginTop: 4 }}>{error}</div>}
+    </>
+  )
+}
 
 /** Client detail drawer with profile and recent movements. */
 function ClientDrawer({ client, onClose }) {
@@ -38,6 +75,7 @@ function ClientDrawer({ client, onClose }) {
               <dt>Pièce d'identité</dt><dd style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{client.idNumber}</dd>
               <dt>Agence</dt><dd>{client.branch}</dd>
               <dt>Agent référent</dt><dd>{client.agent}</dd>
+              <dt>Produit</dt><dd><ProductField client={client} /></dd>
               <dt>Dernier mouvement</dt><dd>{relTime(client.lastTx)}</dd>
             </dl>
           </div>
@@ -298,7 +336,8 @@ export default function ClientsPage() {
         )}
       </div>
 
-      <ClientDrawer client={openClient} onClose={() => setOpenClient(null)} />
+      {/* Latest row, so edits made in the drawer show up in it */}
+      <ClientDrawer client={openClient && ((rows ?? []).find(r => r.id === openClient.id) ?? openClient)} onClose={() => setOpenClient(null)} />
     </div>
   )
 }

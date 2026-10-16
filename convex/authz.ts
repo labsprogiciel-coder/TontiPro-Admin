@@ -37,7 +37,10 @@ const permissions = definePermissions({
   },
   data: {
     import: true,      // Load customers and past transactions from a spreadsheet
-  }
+  },
+  portfolio: {
+    manage: true,      // Product catalogue, a client's product, savings goal targets
+  },
 });
 
 // Step 2: Define Roles with Inheritance
@@ -64,6 +67,7 @@ const roles = defineRoles(permissions, {
     customers: ["verify_identity", "edit_sensitive"],
     disbursements: ["approve"],
     data: ["import"],
+    portfolio: ["manage"],
   },
 
   // Specialized back-office role
@@ -74,6 +78,7 @@ const roles = defineRoles(permissions, {
     disbursements: ["execute"], 
     customers: ["verify_identity"],
     data: ["import"],
+    portfolio: ["manage"],
   },
 
   // System management
