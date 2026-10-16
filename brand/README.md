@@ -30,7 +30,8 @@ PNG exports are in `png/`. In code, use `src/components/Brand.jsx` (web) or
 
 | Name | Hex | Use |
 |---|---|---|
-| Latérite | `#D85A30` | Brand colour, primary buttons, deposits |
+| Latérite | `#D85A30` | Brand colour: the logo, icons, accents, fills with no text on them |
+| Latérite fort | `#BB4721` | Buttons and chips with white text (5.2:1) |
 | Latérite foncé | `#993C1D` | Text on light tinted backgrounds, pressed states |
 | Latérite clair | `#FAE8E0` | Tinted backgrounds, badges |
 | Pièce | `#FFC46B` | The coin. Accent only, never for text |
@@ -40,7 +41,7 @@ PNG exports are in `png/`. In code, use `src/components/Brand.jsx` (web) or
 
 Tile gradient: `#E26B3F` at the top to `#C94F27` at the bottom.
 
-White text on Latérite has a contrast ratio of 3.9:1. Use it for bold text 14 px and up, such as buttons. For smaller text, use Latérite foncé or Encre.
+White text on Latérite has a contrast ratio of only 3.9:1, which passes only for large text (bold 18.7 px and up, or 24 px). Buttons and other fills that carry smaller white text use Latérite fort. Brand-coloured text on light backgrounds uses Latérite foncé.
 
 ## Typography
 
