@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAction } from 'convex/react'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { api } from '../../convex/_generated/api'
-import { I } from '../icons'
+import { MizoMark, MizoWordmark } from '../components/Brand'
 
 // Per flow: heading, intro, code label, submit label, and the error shown for
 // any refusal (the same whatever the cause, so the form never reveals which
@@ -92,9 +92,9 @@ export default function LoginPage() {
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 16, background: "var(--bg)" }}>
       <form onSubmit={onSubmit} className="card" style={{ width: "100%", maxWidth: 380, padding: 28 }}>
         <div className="brand" style={{ padding: 0, marginBottom: 22 }}>
-          <div className="brand-mark"><I.KauriDrop stroke="white" /></div>
+          <MizoMark />
           <div>
-            <div className="brand-name">Kauri</div>
+            <div className="brand-name"><MizoWordmark /></div>
             <div className="brand-sub">Gestion d'épargne</div>
           </div>
         </div>
@@ -106,7 +106,7 @@ export default function LoginPage() {
           <label className="field">
             <span className="field-label">Email professionnel</span>
             <input className="input" type="email" autoComplete="username" required
-              value={email} onChange={e => setEmail(e.target.value)} placeholder="prenom.nom@kauri.bf" />
+              value={email} onChange={e => setEmail(e.target.value)} placeholder="prenom.nom@exemple.bf" />
           </label>
           {withCode && (
             <label className="field">

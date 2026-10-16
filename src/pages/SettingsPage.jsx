@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { I } from '../icons'
+import { MizoMark } from '../components/Brand'
 import { PageHeader } from '../components'
 import Novu from '../components/Inbox'
 
@@ -106,9 +107,9 @@ export default function SettingsPage() {
                 </Field>
                 <Field label="Logo (PNG/SVG)">
                   <div className="upload">
-                    <div className="brand-mark" style={{ width: 40, height: 40 }}><I.KauriDrop stroke="white"/></div>
+                    <MizoMark size={40} />
                     <div>
-                      <div style={{ fontWeight: 550, fontSize: 13 }}>kauri-logo.svg</div>
+                      <div style={{ fontWeight: 550, fontSize: 13 }}>mizo-logo.svg</div>
                       <div className="cell-sub">3,2 Ko · remplacer</div>
                     </div>
                     <button className="btn sm" style={{ marginLeft: "auto" }}>Choisir…</button>
@@ -160,7 +161,7 @@ export default function SettingsPage() {
                 <div className="upload">
                   <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--info-soft)", display: "grid", placeItems: "center", color: "var(--info)" }}><I.Cloud size={18}/></div>
                   <div>
-                    <div style={{ fontWeight: 550, fontSize: 13 }}>Kauri TPE 4.2.1 · 4 mai 2026</div>
+                    <div style={{ fontWeight: 550, fontSize: 13 }}>Mizo TPE 4.2.1 · 4 mai 2026</div>
                     <div className="cell-sub">Corrige le délai de sync sur réseau 2G.</div>
                   </div>
                   <button className="btn brand sm" style={{ marginLeft: "auto" }}>Déployer</button>
@@ -237,7 +238,7 @@ export default function SettingsPage() {
           )}
 
           {section === "integrations" && (
-            <SetCard title="Intégrations" sub="Connectez Kauri à vos outils existants.">
+            <SetCard title="Intégrations" sub="Connectez Mizo à vos outils existants.">
               {[
                 { n: "Orange Money",         s: "Connecté",     dot: "actif",   d: "Encaissements MoMo en temps réel" },
                 { n: "Moov Africa",          s: "Connecté",     dot: "actif",   d: "Encaissements MoMo en temps réel" },

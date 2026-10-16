@@ -61,7 +61,7 @@ export function NewStaffDrawer({ onClose, onCreated }) {
         </label>
         <label className="field">
           <span className="field-label">Email professionnel</span>
-          <input className="input" type="email" required value={form.email} onChange={set("email")} placeholder="prenom.nom@kauri.bf" />
+          <input className="input" type="email" required value={form.email} onChange={set("email")} placeholder="prenom.nom@exemple.bf" />
         </label>
         <label className="field">
           <span className="field-label">Téléphone</span>

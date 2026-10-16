@@ -4,6 +4,7 @@ import { useAuthActions } from '@convex-dev/auth/react'
 import { api } from '../convex/_generated/api'
 import { openCommandPalette } from './components/CommandPalette'
 import { I } from './icons'
+import { MizoMark, MizoWordmark } from './components/Brand'
 import { canOpenPage } from './access'
 
 /** Format a number with French thousands separators. */
@@ -107,7 +108,7 @@ export function SearchInput({ placeholder, value, onChange, width = 240 }) {
 
 /**
  * Page top bar with breadcrumbs, title, optional `sub` line and actions (`children`).
- * crumbs: string[] — segments after "Kauri", e.g. ["Admin", "Agents & TPE"]
+ * crumbs: string[] — segments after "Mizo", e.g. ["Admin", "Agents & TPE"]
  */
 export function PageHeader({ crumbs = [], title, sub, children }) {
   const allCrumbs = title ? [...crumbs, title] : crumbs
@@ -115,7 +116,7 @@ export function PageHeader({ crumbs = [], title, sub, children }) {
     <>
     <header className="topbar">
       <div className="crumbs">
-        <strong>Kauri</strong>
+        <strong>Mizo</strong>
         {allCrumbs.map((c, i) => (
           <span key={c}>
             <span className="crumb-sep">/</span>
@@ -193,9 +194,9 @@ export function Sidebar({ active, setActive }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark"><I.KauriDrop stroke="white" /></div>
+        <MizoMark />
         <div>
-          <div className="brand-name">Kauri</div>
+          <div className="brand-name"><MizoWordmark /></div>
           <div className="brand-sub">Gestion d'épargne</div>
         </div>
       </div>
@@ -230,7 +231,7 @@ export function Sidebar({ active, setActive }) {
 export function Topbar({ inbox }) {
   return (
     <div className="topbar">
-      <div className="crumbs"><strong>Kauri</strong> &nbsp;/&nbsp; Tableau de bord</div>
+      <div className="crumbs"><strong>Mizo</strong> &nbsp;/&nbsp; Tableau de bord</div>
       <div className="topbar-center">
         <button className="cmd-trigger" onClick={openCommandPalette}>
           <I.Search /><span>Rechercher…</span><kbd>⌘K</kbd>
