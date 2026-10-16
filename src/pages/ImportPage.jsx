@@ -3,11 +3,16 @@ import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { PageHeader, errorMessage, fmt } from '../components'
 import { I } from '../icons'
-import { FIELDS, TEMPLATES, buildItems, downloadText, guessMapping, readRows, toCsv } from '../lib/sheet'
+import { FIELDS, IMPORT_REASONS as REASONS, TEMPLATES, buildItems, downloadText, guessMapping, readRows, toCsv } from '../lib/sheet'
+import BackupImport from './BackupImport'
 
 const BATCH = 200 // = IMPORT_BATCH_SIZE in convex/imports.ts
 
 const KINDS = {
+  backup: {
+    label: "Sauvegarde de l'ancienne application",
+    note: "Les deux fichiers exportés par l'ancienne application (clients-….csv et transactions-….csv). Les clients sont créés, leur historique importé, puis chaque solde est aligné sur la colonne Solde de la sauvegarde.",
+  },
   customers: {
     label: "Clients",
     mutation: api.imports.importCustomers,
@@ -20,38 +25,25 @@ const KINDS = {
   },
 }
 
-/** Reasons shown in the report, by code from sheet.js or convex/imports.ts. */
-const REASONS = {
-  NAME_REQUIRED:      "Nom manquant",
-  INVALID_PHONE:      "Téléphone manquant ou invalide",
-  INVALID_ID_NUMBER:  "N° de pièce trop long",
-  PHONE_TAKEN:        "Client déjà enregistré (même téléphone)",
-  CUSTOMER_REQUIRED:  "Téléphone ou n° de compte manquant",
-  CUSTOMER_NOT_FOUND: "Client introuvable dans votre agence",
-  INVALID_AMOUNT:     "Montant invalide",
-  INVALID_TYPE:       "Type inconnu (attendu : Dépôt ou Retrait)",
-  INVALID_DATE:       "Date invalide ou dans le futur",
-  ALREADY_IMPORTED:   "Déjà importée",
-}
-
 /** Import customers or past transactions from an .xlsx or .csv file into the caller's branch. */
 export default function ImportPage() {
   const me = useQuery(api.users.me)
-  const [kind, setKind] = useState("customers")
+  const [kind, setKind] = useState("backup")
   const [file, setFile] = useState(null)           // { name, headers, data }
   const [mapping, setMapping] = useState({})
   const [readError, setReadError] = useState(null)
   const [run, setRun] = useState(null)             // { done, total, results, error, finished }
+  const [backupBusy, setBackupBusy] = useState(false)
   const inputRef = useRef(null)
-  const send = useMutation(KINDS[kind].mutation)
+  const send = useMutation(KINDS[kind].mutation ?? api.imports.importCustomers)
 
   const items = useMemo(
-    () => (file ? buildItems(kind, file.data, mapping) : []),
+    () => (file && kind !== "backup" ? buildItems(kind, file.data, mapping) : []),
     [file, kind, mapping],
   )
   const ready = items.filter((i) => i.payload)
   const invalid = items.filter((i) => i.error)
-  const fields = FIELDS[kind]
+  const fields = FIELDS[kind] ?? []
   const missingRequired = fields.filter((f) => f.required && !(mapping[f.key] >= 0))
   const noCustomerColumn = kind === "transactions" && !(mapping.phoneNumber >= 0) && !(mapping.accountNumber >= 0)
   const canImport = ready.length > 0 && missingRequired.length === 0 && !noCustomerColumn && !run
@@ -60,7 +52,8 @@ export default function ImportPage() {
   const switchKind = (k) => {
     setKind(k)
     setRun(null)
-    if (file) setMapping(guessMapping(k, file.headers))
+    if (k === "backup") reset()
+    else if (file) setMapping(guessMapping(k, file.headers))
   }
 
   const onPick = async (f) => {
@@ -120,16 +113,19 @@ export default function ImportPage() {
         <div className="card-head">
           <div className="seg">
             {Object.entries(KINDS).map(([k, v]) => (
-              <button key={k} className={kind === k ? "on" : ""} onClick={() => switchKind(k)} disabled={!!run && !run.finished}>{v.label}</button>
+              <button key={k} className={kind === k ? "on" : ""} onClick={() => switchKind(k)} disabled={(!!run && !run.finished) || backupBusy}>{v.label}</button>
             ))}
           </div>
           <div className="filter-spacer"/>
-          <button className="btn sm" onClick={() => downloadText(`modele-${kind}.csv`, toCsv(TEMPLATES[kind]))}>
-            <I.Export size={14}/>Modèle CSV
-          </button>
+          {TEMPLATES[kind] && (
+            <button className="btn sm" onClick={() => downloadText(`modele-${kind}.csv`, toCsv(TEMPLATES[kind]))}>
+              <I.Export size={14}/>Modèle CSV
+            </button>
+          )}
         </div>
         <div style={{ padding: "0 16px 16px" }}>
           <p className="cell-sub" style={{ fontSize: 13, margin: "0 0 12px", maxWidth: 760 }}>{KINDS[kind].note}</p>
+          {kind === "backup" ? <BackupImport onBusy={setBackupBusy}/> : <>
           <div className="upload">
             <I.Folder size={20}/>
             <div>
@@ -145,6 +141,7 @@ export default function ImportPage() {
             </button>
           </div>
           {readError && <div style={{ color: "var(--neg)", fontSize: 13, marginTop: 10 }}>{readError}</div>}
+          </>}
         </div>
       </div>
 

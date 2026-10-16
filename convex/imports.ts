@@ -7,6 +7,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { mutation, MutationCtx } from "./_generated/server";
 import { authz } from "./authz";
 import { cleanIdNumber, cleanName, cleanPhone } from "./customers";
+import { customerBalance } from "./transactions";
 import { requireUser } from "./users";
 
 /** Rows per call; the page sends a file in batches of this size. */
@@ -15,7 +16,7 @@ const MAX_AMOUNT = 100_000_000;
 const EARLIEST = Date.UTC(2000, 0, 1);
 
 type RowResult =
-  | { row: number; status: "created"; id: string }
+  | { row: number; status: "created"; id: string; delta?: number }
   | { row: number; status: "skipped" | "error"; code: string };
 
 /** The importer, who needs data:import; imports land in their own branch. */
@@ -34,12 +35,40 @@ function refusalCode(error: unknown) {
 
 const optionalText = (s: string | undefined) => (s?.trim() ? s.trim() : undefined);
 
+/** Upper-cased, trimmed account number or old-app ID, for matching. */
+const key = (s: string | undefined) => optionalText(s)?.toUpperCase();
+
+/**
+ * The branch's customers indexed by account number and by old-app ID
+ * (metadata.legacyId), for matching import rows. Loaded once per batch.
+ */
+async function branchIndex(ctx: MutationCtx, branchId: Id<"branches">) {
+  const customers = await ctx.db
+    .query("customers")
+    .withIndex("by_branch", (q) => q.eq("branchId", branchId))
+    .collect();
+  const byAccount = new Map<string, Id<"customers">>();
+  const byLegacy = new Map<string, Id<"customers">>();
+  for (const c of customers) {
+    const account = key(c.metadata?.accountNumber);
+    const legacy = key(c.metadata?.legacyId);
+    if (account) byAccount.set(account, c._id);
+    if (legacy) byLegacy.set(legacy, c._id);
+  }
+  return { byAccount, byLegacy };
+}
+
 /**
  * Create prospects in the importer's branch, as createProspect would (status
- * `prospect`, onboarded by the importer). A phone already used in the branch,
- * or earlier in the same batch, is `skipped` with PHONE_TAKEN, so importing
- * the same file twice creates nothing new. `row` is echoed back for the
- * page's report.
+ * `prospect`, onboarded by the importer). Duplicates are `skipped`, so
+ * importing the same file twice creates nothing new:
+ * - a row whose `legacyId` (client ID in the old app's backup) is already
+ *   imported: ALREADY_IMPORTED;
+ * - otherwise, a row with an account number already used in the branch:
+ *   ACCOUNT_TAKEN. With an account number, a shared phone is allowed (one
+ *   person with several accounts, a family phone);
+ * - a row without an account number whose phone is already used: PHONE_TAKEN.
+ * `row` is echoed back for the page's report.
  */
 export const importCustomers = mutation({
   args: {
@@ -54,14 +83,16 @@ export const importCustomers = mutation({
         accountNumber: v.optional(v.string()),
         email: v.optional(v.string()),
         commitmentAmount: v.optional(v.number()),
+        legacyId: v.optional(v.string()),
       }),
     ),
   },
   handler: async (ctx, { rows }) => {
     const importer = await requireImporter(ctx, rows.length);
     const branchId = importer.branchId;
+    const { byAccount, byLegacy } = await branchIndex(ctx, branchId);
+    const phonesInBatch = new Set<string>();
     const results: RowResult[] = [];
-    const seen = new Set<string>();
 
     for (const r of rows) {
       let fullName: string, phoneNumber: string, idNumber: string;
@@ -80,18 +111,30 @@ export const importCustomers = mutation({
         results.push({ row: r.row, status: "error", code: "INVALID_AMOUNT" });
         continue;
       }
-      const taken =
-        seen.has(phoneNumber) ||
-        (await ctx.db
-          .query("customers")
-          .withIndex("by_phone", (q) => q.eq("phoneNumber", phoneNumber))
-          .filter((q) => q.eq(q.field("branchId"), branchId))
-          .first()) !== null;
-      if (taken) {
-        results.push({ row: r.row, status: "skipped", code: "PHONE_TAKEN" });
+      const legacy = key(r.legacyId);
+      const account = key(r.accountNumber);
+      if (legacy && byLegacy.has(legacy)) {
+        results.push({ row: r.row, status: "skipped", code: "ALREADY_IMPORTED" });
         continue;
       }
-      seen.add(phoneNumber);
+      if (account) {
+        if (byAccount.has(account)) {
+          results.push({ row: r.row, status: "skipped", code: "ACCOUNT_TAKEN" });
+          continue;
+        }
+      } else {
+        const taken =
+          phonesInBatch.has(phoneNumber) ||
+          (await ctx.db
+            .query("customers")
+            .withIndex("by_phone", (q) => q.eq("phoneNumber", phoneNumber))
+            .filter((q) => q.eq(q.field("branchId"), branchId))
+            .first()) !== null;
+        if (taken) {
+          results.push({ row: r.row, status: "skipped", code: "PHONE_TAKEN" });
+          continue;
+        }
+      }
 
       const metadata = {
         address: optionalText(r.address),
@@ -99,6 +142,7 @@ export const importCustomers = mutation({
         accountNumber: optionalText(r.accountNumber),
         email: optionalText(r.email),
         commitmentAmount: r.commitmentAmount,
+        legacyId: optionalText(r.legacyId),
       };
       const id = await ctx.db.insert("customers", {
         fullName,
@@ -109,6 +153,9 @@ export const importCustomers = mutation({
         status: "prospect",
         metadata: Object.values(metadata).some((x) => x !== undefined) ? metadata : undefined,
       });
+      phonesInBatch.add(phoneNumber);
+      if (account) byAccount.set(account, id);
+      if (legacy) byLegacy.set(legacy, id);
       results.push({ row: r.row, status: "created", id });
     }
     return results;
@@ -116,24 +163,28 @@ export const importCustomers = mutation({
 });
 
 /**
- * Record past deposits and withdrawals of the importer's branch's customers,
- * found by phone or account number. They are history: they keep their own
- * date, count in the customer's balance, and are marked `imported` so they
- * never count in an agent's daily cash, reconciliation or own collections.
- * The agent named in the file is kept as text; the importer is recorded as
- * the agent. No balance check: the file is a record of what happened.
+ * Record past deposits and withdrawals of the importer's branch's customers.
+ * The customer is found by old-app client ID, then account number, then
+ * phone. They are history: they keep their own date and time, count in the
+ * customer's balance, and are marked `imported` so they never count in an
+ * agent's daily cash, reconciliation or own collections. The agent named in
+ * the file is kept as text; the importer is recorded as the agent. No balance
+ * check: the file is a record of what happened.
  *
- * Each row's key is its customer, type, amount, date and `occurrence` (how
- * many identical rows came before it in the file), so importing the same
- * file again skips every row with ALREADY_IMPORTED.
+ * Re-importing the same file skips every row with ALREADY_IMPORTED: a row
+ * with a `reference` (transaction ID in the file) is keyed on it; otherwise
+ * on its customer, type, amount, date and `occurrence` (how many identical
+ * rows came before it in the file).
  */
 export const importTransactions = mutation({
   args: {
     rows: v.array(
       v.object({
         row: v.number(),
+        legacyClientId: v.optional(v.string()),
         phoneNumber: v.optional(v.string()),
         accountNumber: v.optional(v.string()),
+        reference: v.optional(v.string()),
         type: v.union(v.literal("deposit"), v.literal("withdrawal")),
         amount: v.number(),
         date: v.number(),
@@ -149,26 +200,16 @@ export const importTransactions = mutation({
     const organization = branch ? await ctx.db.get(branch.organizationId) : null;
     const currency = organization?.currency ?? "XOF";
     const now = Date.now();
-
-    // Account numbers live in metadata, so look them up once per batch
-    const byAccount = new Map<string, Id<"customers">>();
-    if (rows.some((r) => optionalText(r.accountNumber))) {
-      const customers = await ctx.db
-        .query("customers")
-        .withIndex("by_branch", (q) => q.eq("branchId", branchId))
-        .collect();
-      for (const c of customers) {
-        const account = optionalText(c.metadata?.accountNumber);
-        if (account) byAccount.set(account.toUpperCase(), c._id);
-      }
-    }
+    const { byAccount, byLegacy } = await branchIndex(ctx, branchId);
 
     const results: RowResult[] = [];
     for (const r of rows) {
       let customerId: Id<"customers"> | undefined;
-      const account = optionalText(r.accountNumber);
-      if (account) customerId = byAccount.get(account.toUpperCase());
-      if (!customerId && optionalText(r.phoneNumber)) {
+      const legacy = key(r.legacyClientId);
+      const account = key(r.accountNumber);
+      if (legacy) customerId = byLegacy.get(legacy);
+      if (!customerId && account) customerId = byAccount.get(account);
+      if (!customerId && !legacy && !account && optionalText(r.phoneNumber)) {
         let phone: string | null = null;
         try {
           phone = cleanPhone(r.phoneNumber!);
@@ -196,7 +237,10 @@ export const importTransactions = mutation({
         results.push({ row: r.row, status: "error", code: "INVALID_DATE" });
         continue;
       }
-      const clientId = `import:${customerId}:${r.type}:${r.amount}:${r.date}:${r.occurrence}`;
+      const reference = optionalText(r.reference);
+      const clientId = reference
+        ? `import:ref:${branchId}:${reference.slice(0, 120)}`
+        : `import:${customerId}:${r.type}:${r.amount}:${r.date}:${r.occurrence}`;
       const existing = await ctx.db
         .query("transactions")
         .withIndex("by_client_id", (q) => q.eq("clientId", clientId))
@@ -220,6 +264,75 @@ export const importTransactions = mutation({
         importedAgentName: optionalText(r.agentName)?.slice(0, 120),
       });
       results.push({ row: r.row, status: "created", id });
+    }
+    return results;
+  },
+});
+
+/** Agent name shown on the balance adjustments made by alignBalances. */
+export const ADJUSTMENT_LABEL = "Ajustement import (solde de la sauvegarde)";
+
+/**
+ * Bring imported customers' balances to the balance their old-app backup
+ * showed, after their history was imported: for each customer (by old-app
+ * client ID) whose balance differs from `balance`, record one imported
+ * deposit or withdrawal for the difference, dated now and labelled
+ * ADJUSTMENT_LABEL. A customer already at that balance is `skipped` with
+ * BALANCE_OK; a customer already adjusted once is skipped with
+ * ALREADY_IMPORTED, so running the same backup again changes nothing.
+ */
+export const alignBalances = mutation({
+  args: {
+    rows: v.array(v.object({ row: v.number(), legacyId: v.string(), balance: v.number() })),
+  },
+  handler: async (ctx, { rows }) => {
+    const importer = await requireImporter(ctx, rows.length);
+    const branchId = importer.branchId;
+    const branch = await ctx.db.get(branchId);
+    const organization = branch ? await ctx.db.get(branch.organizationId) : null;
+    const { byLegacy } = await branchIndex(ctx, branchId);
+    const now = Date.now();
+
+    const results: RowResult[] = [];
+    for (const r of rows) {
+      const customerId = byLegacy.get(key(r.legacyId) ?? "");
+      if (!customerId) {
+        results.push({ row: r.row, status: "error", code: "CUSTOMER_NOT_FOUND" });
+        continue;
+      }
+      if (!Number.isInteger(r.balance) || Math.abs(r.balance) > MAX_AMOUNT) {
+        results.push({ row: r.row, status: "error", code: "INVALID_AMOUNT" });
+        continue;
+      }
+      const clientId = `import:align:${customerId}`;
+      const existing = await ctx.db
+        .query("transactions")
+        .withIndex("by_client_id", (q) => q.eq("clientId", clientId))
+        .first();
+      if (existing) {
+        results.push({ row: r.row, status: "skipped", code: "ALREADY_IMPORTED" });
+        continue;
+      }
+      const diff = r.balance - (await customerBalance(ctx, customerId));
+      if (diff === 0) {
+        results.push({ row: r.row, status: "skipped", code: "BALANCE_OK" });
+        continue;
+      }
+      const id = await ctx.db.insert("transactions", {
+        type: diff > 0 ? "deposit" : "withdrawal",
+        amount: Math.abs(diff),
+        currency: organization?.currency ?? "XOF",
+        customerId,
+        agentId: importer._id,
+        branchId,
+        tpeId: "IMPORT",
+        status: "completed",
+        timestamp: now,
+        clientId,
+        imported: true,
+        importedAgentName: ADJUSTMENT_LABEL,
+      });
+      results.push({ row: r.row, status: "created", id, delta: diff });
     }
     return results;
   },

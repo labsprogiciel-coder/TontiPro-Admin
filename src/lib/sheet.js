@@ -47,28 +47,43 @@ export function normalizeHeader(h) {
     .toLowerCase().replace(/[^a-z0-9]/g, "")
 }
 
+const ACCOUNT_ALIASES = ["compte", "numerocompte", "numerodecompte", "ncompte", "account", "codeclient", "code", "matricule"]
+
 /** Import fields per kind, with the headers that are recognised for each. */
 export const FIELDS = {
   customers: [
+    { key: "legacyId", label: "ID (ancienne application)", aliases: ["id", "idclient", "identifiant", "ancienid"] },
     { key: "fullName", label: "Nom complet", required: true, aliases: ["nom", "nomcomplet", "nomprenom", "nomprenoms", "nometprenom", "nometprenoms", "client", "nomclient", "name", "fullname"] },
     { key: "phoneNumber", label: "Téléphone", required: true, aliases: ["telephone", "tel", "phone", "numero", "numerotelephone", "ntelephone", "contact", "mobile", "portable"] },
     { key: "idNumber", label: "N° de pièce", aliases: ["cni", "cnib", "piece", "numeropiece", "npiece", "nci", "idnumber", "piecedidentite"] },
     { key: "address", label: "Adresse", aliases: ["adresse", "quartier", "village", "address", "localite"] },
     { key: "groupName", label: "Groupe", aliases: ["groupe", "group", "tontine", "groupement"] },
-    { key: "accountNumber", label: "N° de compte", aliases: ["compte", "numerocompte", "ncompte", "account", "codeclient", "code", "matricule"] },
+    { key: "accountNumber", label: "N° de compte", aliases: ACCOUNT_ALIASES },
     { key: "email", label: "Email", aliases: ["email", "mail", "courriel"] },
-    { key: "commitmentAmount", label: "Mise", aliases: ["mise", "engagement", "montantengagement", "cotisation", "cotisationjournaliere", "commitment"] },
+    { key: "commitmentAmount", label: "Mise", aliases: ["mise", "engagement", "montantengagement", "cotisation", "cotisationjournaliere", "commitment", "engagementdepargne", "engagementepargne"] },
   ],
   transactions: [
+    { key: "legacyClientId", label: "ID client (ancienne application)", aliases: ["idclient", "clientid", "identifiantclient"] },
     { key: "phoneNumber", label: "Téléphone du client", aliases: ["telephone", "tel", "phone", "numero", "numerotelephone", "ntelephone", "contact", "mobile"] },
-    { key: "accountNumber", label: "N° de compte", aliases: ["compte", "numerocompte", "ncompte", "account", "codeclient", "code", "matricule"] },
+    { key: "accountNumber", label: "N° de compte", aliases: ACCOUNT_ALIASES },
+    { key: "reference", label: "Référence de l'opération", aliases: ["id", "reference", "ref", "idtransaction", "idoperation"] },
     { key: "clientName", label: "Nom du client (affichage)", aliases: ["nom", "client", "nomclient", "nomcomplet", "name"] },
     { key: "type", label: "Type (dépôt / retrait)", aliases: ["type", "operation", "nature", "sens", "mouvement"] },
     { key: "amount", label: "Montant", required: true, aliases: ["montant", "amount", "somme", "valeur", "montantfcfa"] },
     { key: "date", label: "Date", required: true, aliases: ["date", "jour", "dateoperation", "datetransaction"] },
+    { key: "time", label: "Heure", aliases: ["heure", "time", "horaire"] },
     { key: "agentName", label: "Agent", aliases: ["agent", "collecteur", "agentname", "nomagent"] },
   ],
 }
+
+/**
+ * Clients file of the old app's backup ("clients-AAAA-MM-JJ.csv"): the
+ * customer fields plus its client ID and balance, both required.
+ */
+FIELDS.backupClients = [
+  ...FIELDS.customers.map((f) => (f.key === "legacyId" ? { ...f, required: true } : f)),
+  { key: "balance", label: "Solde", required: true, aliases: ["solde", "balance", "soldeactuel"] },
+]
 
 /** Column index for each field, from the header row; -1 where none matches. */
 export function guessMapping(kind, headers) {
@@ -127,6 +142,26 @@ export function parseDate(v) {
   return null
 }
 
+/**
+ * Time of day in ms, or null if unreadable; 0 for an empty cell. Accepts
+ * "13:46", "9:54 AM", "12:36 PM", "08h30", Date cells and Excel day fractions.
+ */
+export function parseTime(v) {
+  if (v === null || v === undefined || v === "") return 0
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : (v.getUTCHours() * 60 + v.getUTCMinutes()) * 60000
+  if (typeof v === "number") return v >= 0 && v < 1 ? Math.round(v * 1440) * 60000 : null
+  const m = text(v).toLowerCase().match(/^(\d{1,2})\s*[:h]\s*(\d{2})(?:\s*:\s*\d{2})?\s*(am|pm)?$/)
+  if (!m) return null
+  let h = Number(m[1])
+  const min = Number(m[2])
+  if (m[3]) {
+    if (h < 1 || h > 12) return null
+    h = (h % 12) + (m[3] === "pm" ? 12 : 0)
+  }
+  if (h > 23 || min > 59) return null
+  return (h * 60 + min) * 60000
+}
+
 const DEPOSIT_WORDS = ["depot", "deposit", "d", "versement", "cotisation", "credit", "entree", "collecte", "+"]
 const WITHDRAWAL_WORDS = ["retrait", "withdrawal", "r", "debit", "sortie", "paiement", "decaissement", "-"]
 
@@ -152,13 +187,13 @@ const cell = (row, i) => (i >= 0 ? row[i] : undefined)
 export function buildItems(kind, dataRows, mapping) {
   const items = dataRows.map((r, idx) => {
     const row = idx + 2
-    if (kind === "customers") {
+    if (kind === "customers" || kind === "backupClients") {
       const fullName = text(cell(r, mapping.fullName))
       const phoneNumber = text(cell(r, mapping.phoneNumber))
       if (!fullName) return { row, error: "NAME_REQUIRED", label: phoneNumber }
       if (!phoneNumber) return { row, error: "INVALID_PHONE", label: fullName }
       const payload = { row, fullName, phoneNumber }
-      for (const k of ["idNumber", "address", "groupName", "accountNumber", "email"]) {
+      for (const k of ["legacyId", "idNumber", "address", "groupName", "accountNumber", "email"]) {
         const val = text(cell(r, mapping[k]))
         if (val) payload[k] = val
       }
@@ -168,13 +203,20 @@ export function buildItems(kind, dataRows, mapping) {
         if (n === null || n < 0) return { row, error: "INVALID_AMOUNT", label: fullName }
         payload.commitmentAmount = n
       }
+      if (kind === "backupClients") {
+        if (!payload.legacyId) return { row, error: "LEGACY_ID_REQUIRED", label: fullName }
+        const balance = parseAmount(cell(r, mapping.balance))
+        if (balance === null) return { row, error: "INVALID_BALANCE", label: fullName }
+        return { row, payload, label: fullName, balance }
+      }
       return { row, payload, label: fullName }
     }
 
+    const legacyClientId = text(cell(r, mapping.legacyClientId))
     const phoneNumber = text(cell(r, mapping.phoneNumber))
     const accountNumber = text(cell(r, mapping.accountNumber))
-    const label = text(cell(r, mapping.clientName)) || phoneNumber || accountNumber
-    if (!phoneNumber && !accountNumber) return { row, error: "CUSTOMER_REQUIRED", label }
+    const label = text(cell(r, mapping.clientName)) || phoneNumber || accountNumber || legacyClientId
+    if (!legacyClientId && !phoneNumber && !accountNumber) return { row, error: "CUSTOMER_REQUIRED", label }
     const signed = parseAmount(cell(r, mapping.amount))
     if (signed === null || signed === 0) return { row, error: "INVALID_AMOUNT", label }
     let type = signed < 0 ? "withdrawal" : "deposit"
@@ -183,9 +225,13 @@ export function buildItems(kind, dataRows, mapping) {
       if (!t) return { row, error: "INVALID_TYPE", label }
       type = t
     }
-    const date = parseDate(cell(r, mapping.date))
-    if (date === null) return { row, error: "INVALID_DATE", label }
-    const payload = { row, type, amount: Math.abs(signed), date }
+    const day = parseDate(cell(r, mapping.date))
+    const time = parseTime(cell(r, mapping.time))
+    if (day === null || time === null) return { row, error: "INVALID_DATE", label }
+    const payload = { row, type, amount: Math.abs(signed), date: day + time }
+    if (legacyClientId) payload.legacyClientId = legacyClientId
+    const reference = text(cell(r, mapping.reference))
+    if (reference) payload.reference = reference
     if (phoneNumber) payload.phoneNumber = phoneNumber
     if (accountNumber) payload.accountNumber = accountNumber
     const agentName = text(cell(r, mapping.agentName))
@@ -198,13 +244,31 @@ export function buildItems(kind, dataRows, mapping) {
     for (const it of items) {
       if (!it.payload) continue
       const p = it.payload
-      const key = [p.phoneNumber ?? "", (p.accountNumber ?? "").toUpperCase(), p.type, p.amount, p.date].join("|")
+      const key = [p.legacyClientId ?? "", p.phoneNumber ?? "", (p.accountNumber ?? "").toUpperCase(), p.type, p.amount, p.date].join("|")
       const n = seen.get(key) ?? 0
       p.occurrence = n
       seen.set(key, n + 1)
     }
   }
   return items
+}
+
+/** Reasons shown in import reports, by code from buildItems or convex/imports.ts. */
+export const IMPORT_REASONS = {
+  NAME_REQUIRED:      "Nom manquant",
+  INVALID_PHONE:      "Téléphone manquant ou invalide",
+  INVALID_ID_NUMBER:  "N° de pièce trop long",
+  PHONE_TAKEN:        "Client déjà enregistré (même téléphone, sans n° de compte)",
+  ACCOUNT_TAKEN:      "N° de compte déjà utilisé dans l'agence",
+  LEGACY_ID_REQUIRED: "ID client manquant",
+  INVALID_BALANCE:    "Solde illisible",
+  CUSTOMER_REQUIRED:  "ID client, téléphone ou n° de compte manquant",
+  CUSTOMER_NOT_FOUND: "Client introuvable dans votre agence",
+  INVALID_AMOUNT:     "Montant invalide",
+  INVALID_TYPE:       "Type inconnu (attendu : Dépôt, Collecte ou Retrait)",
+  INVALID_DATE:       "Date ou heure invalide, ou dans le futur",
+  ALREADY_IMPORTED:   "Déjà importé",
+  BALANCE_OK:         "Solde déjà correct",
 }
 
 /** CSV text (";"-separated, with a BOM so Excel reads the accents) for download. */

@@ -17,6 +17,8 @@ const metadataValidator = v.object({
   savingsGoal: v.optional(v.number()),
   accountNumber: v.optional(v.string()),
   email: v.optional(v.string()),
+  // Client ID in the old app's backup, set by imports.ts to match its transactions
+  legacyId: v.optional(v.string()),
 });
 
 /** Trim a name; throw NAME_REQUIRED if empty or longer than 200 characters. */
