@@ -4,8 +4,11 @@ import { api } from '../../convex/_generated/api'
 import { errorMessage, fmt } from '../components'
 import { I } from '../icons'
 import { FIELDS, IMPORT_REASONS as REASONS, buildItems, downloadText, guessMapping, readRows, toCsv } from '../lib/sheet'
+import { Pager, usePaged } from '../components/Pager'
+import { WizardFoot, WizardSteps } from '../components/Wizard'
 
 const BATCH = 200 // = IMPORT_BATCH_SIZE in convex/imports.ts
+const WIZARD = ["Fichiers", "Vérification", "Import"]
 const STEPS = [
   { key: "clients", label: "Clients" },
   { key: "tx", label: "Transactions" },
@@ -60,6 +63,7 @@ export default function BackupImport({ onBusy }) {
   const [txs, setTxs] = useState(null)
   const [errors, setErrors] = useState({})
   const [run, setRun] = useState(null) // { step, done, total, results: {clients, tx, align}, finished, error }
+  const [wizard, setWizard] = useState(0) // index in WIZARD
 
   const pick = (kind, set, slot) => async (file) => {
     if (!file) return
@@ -113,6 +117,7 @@ export default function BackupImport({ onBusy }) {
       },
     ]
     onBusy?.(true)
+    setWizard(2)
     try {
       for (const [n, step] of plan.entries()) {
         setRun({ step: n, done: 0, total: step.rows.length, results, finished: false })
@@ -143,38 +148,53 @@ export default function BackupImport({ onBusy }) {
         .filter((r) => r.code !== "BALANCE_OK")
         .map((r) => ({ ...r, file: s.label, client: labels[s.key].get(r.row) || "—" })))
     : []
+  const reportPage = usePaged(report)
   const statusLabel = (r) =>
     r.status === "created" ? "Ajusté" : r.status === "updated" ? "Ajustement corrigé" : r.status === "skipped" ? "Ignorée" : "Erreur"
   const reason = (r) => r.status === "created" || r.status === "updated"
     ? `Solde aligné sur la sauvegarde (${r.delta > 0 ? "+" : "−"}${fmt(Math.abs(r.delta))} F)`
     : REASONS[r.code] ?? r.code
-  const busy = run && !run.finished
   const created = (k) => (run ? run.results[k].filter((r) => r.status === "created" || r.status === "updated").length : 0)
 
-  return (
-    <div>
-      <FilePick title="1. Fichier clients" hint="clients-AAAA-MM-JJ.csv : ID, Nom, Numéro de compte, Solde, Téléphone…"
-        file={clients} error={errors.clients} disabled={busy} onPick={pick("backupClients", setClients, "clients")}/>
-      <FilePick title="2. Fichier transactions (facultatif)" hint="transactions-AAAA-MM-JJ.csv : ID, ID Client, Type, Montant, Date, Heure, Agent…"
-        file={txs} error={errors.tx} disabled={busy} onPick={pick("transactions", setTxs, "tx")}/>
+  const restart = () => { setClients(null); setTxs(null); setErrors({}); setRun(null); setWizard(0) }
 
-      {preview && !run && (
-        <div style={{ marginTop: 14 }}>
-          <ul style={{ fontSize: 13, margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.7 }}>
+  return (
+    <div className="card">
+      <WizardSteps steps={WIZARD} current={wizard}/>
+
+      {wizard === 0 && <>
+        <div className="wiz-body" style={{ paddingTop: 6 }}>
+          <FilePick title="Fichier clients" hint="clients-AAAA-MM-JJ.csv : ID, Nom, Numéro de compte, Solde, Téléphone…"
+            file={clients} error={errors.clients} onPick={pick("backupClients", setClients, "clients")}/>
+          <FilePick title="Fichier transactions (facultatif)" hint="transactions-AAAA-MM-JJ.csv : ID, ID Client, Type, Montant, Date, Heure, Agent…"
+            file={txs} error={errors.tx} onPick={pick("transactions", setTxs, "tx")}/>
+        </div>
+        <WizardFoot>
+          <button className="btn brand" disabled={!clients} onClick={() => setWizard(1)}>Suivant ›</button>
+        </WizardFoot>
+      </>}
+
+      {wizard === 1 && preview && <>
+        <div className="wiz-body">
+          <ul style={{ fontSize: 13, margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
             <li><strong>{preview.okClients}</strong> client(s) à créer{preview.badClients > 0 && <span style={{ color: "var(--neg)" }}> · {preview.badClients} ligne(s) en erreur</span>}</li>
-            {txs && <li><strong>{preview.okTx}</strong> transaction(s) d'historique{preview.badTx > 0 && <span style={{ color: "var(--neg)" }}> · {preview.badTx} ligne(s) en erreur</span>}
-              {preview.orphanTx > 0 && <span style={{ color: "var(--neg)" }}> · {preview.orphanTx} pour un client absent du fichier clients</span>}</li>}
+            {txs
+              ? <li><strong>{preview.okTx}</strong> transaction(s) d'historique{preview.badTx > 0 && <span style={{ color: "var(--neg)" }}> · {preview.badTx} ligne(s) en erreur</span>}
+                  {preview.orphanTx > 0 && <span style={{ color: "var(--neg)" }}> · {preview.orphanTx} pour un client absent du fichier clients</span>}</li>
+              : <li>Pas de fichier transactions : chaque Solde sera enregistré en une seule ligne d'ajustement, sans historique.</li>}
             <li><strong>{preview.toAdjust}</strong> solde(s) où l'historique ne donne pas le Solde de la sauvegarde : une ligne « Ajustement import » les alignera.</li>
           </ul>
+        </div>
+        <WizardFoot onBack={() => setWizard(0)}>
           <button className="btn brand" disabled={preview.okClients === 0} onClick={start}>
             <I.ArrowDown size={14} stroke="white"/>Importer la sauvegarde
           </button>
-        </div>
-      )}
+        </WizardFoot>
+      </>}
 
-      {run && (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 13 }}>
+      {wizard === 2 && run && <>
+        <div className="wiz-body">
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 13, flexWrap: "wrap" }}>
             {STEPS.map((s, n) => (
               <span key={s.key} className={"tag " + (n < run.step || run.finished ? "actif" : n === run.step ? "attente" : "archive")}>
                 {n + 1}. {s.label}{n === run.step && !run.finished ? ` ${run.done}/${run.total}` : ""}
@@ -190,12 +210,6 @@ export default function BackupImport({ onBusy }) {
               <span style={{ color: report.some((r) => r.status === "error") ? "var(--neg)" : undefined }}>
                 <strong>{report.filter((r) => r.status === "error").length}</strong> en erreur
               </span>
-              {report.length > 0 && (
-                <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => downloadText("rapport-import-sauvegarde.csv",
-                  toCsv([["Fichier", "Ligne", "Client", "Statut", "Motif"], ...report.map((r) => [r.file, r.row, r.client, statusLabel(r), reason(r)])]))}>
-                  <I.Export size={14}/>Rapport CSV
-                </button>
-              )}
             </div>
           )}
           {run.error && (
@@ -203,27 +217,38 @@ export default function BackupImport({ onBusy }) {
               Import interrompu : {run.error} Ce qui est déjà importé est enregistré ; relancez avec les mêmes fichiers pour continuer.
             </div>
           )}
-          {run.finished && report.length > 0 && (
-            <div style={{ overflowX: "auto", marginTop: 12 }}>
-              <table className="data-table">
-                <thead><tr><th>Fichier</th><th>Ligne</th><th>Client</th><th>Statut</th><th>Motif</th></tr></thead>
-                <tbody>
-                  {report.slice(0, 300).map((r) => (
-                    <tr key={r.file + r.row}>
-                      <td className="cell-sub">{r.file}</td>
-                      <td className="cell-sub">{r.row}</td>
-                      <td>{r.client}</td>
-                      <td><span className={"tag " + (r.status === "created" || r.status === "updated" ? "actif" : r.status === "skipped" ? "attente" : "archive")}>{statusLabel(r)}</span></td>
-                      <td>{reason(r)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {report.length > 300 && <div className="cell-sub" style={{ padding: 12 }}>… {report.length - 300} autres : voir le rapport CSV.</div>}
-            </div>
-          )}
         </div>
-      )}
+        {run.finished && report.length > 0 && <>
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead><tr><th>Fichier</th><th>Ligne</th><th>Client</th><th>Statut</th><th>Motif</th></tr></thead>
+              <tbody>
+                {reportPage.rows.map((r) => (
+                  <tr key={r.file + r.row}>
+                    <td className="cell-sub">{r.file}</td>
+                    <td className="cell-sub">{r.row}</td>
+                    <td>{r.client}</td>
+                    <td><span className={"tag " + (r.status === "created" || r.status === "updated" ? "actif" : r.status === "skipped" ? "attente" : "archive")}>{statusLabel(r)}</span></td>
+                    <td>{reason(r)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pager paged={reportPage}/>
+        </>}
+        {run.finished && (
+          <WizardFoot>
+            {report.length > 0 && (
+              <button className="btn" onClick={() => downloadText("rapport-import-sauvegarde.csv",
+                toCsv([["Fichier", "Ligne", "Client", "Statut", "Motif"], ...report.map((r) => [r.file, r.row, r.client, statusLabel(r), reason(r)])]))}>
+                <I.Export size={14}/>Rapport CSV
+              </button>
+            )}
+            <button className="btn brand" onClick={restart}>Nouvel import</button>
+          </WizardFoot>
+        )}
+      </>}
     </div>
   )
 }
