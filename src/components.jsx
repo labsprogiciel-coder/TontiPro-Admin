@@ -66,6 +66,16 @@ const ERROR_MESSAGES = {
   NO_DEVICE:         "Aucun TPE actif n'est lié à cet agent.",
   DAY_CLOSED:        "La caisse du jour est déjà clôturée.",
   INSUFFICIENT_BALANCE: "Solde du client insuffisant.",
+  INVALID_CODE:      "Code produit invalide : 2 à 20 lettres, chiffres ou + . _ -",
+  CODE_TAKEN:        "Un autre produit utilise déjà ce code.",
+  SUMMARY_TOO_LONG:  "La description dépasse 300 caractères.",
+  INVALID_TERMS:     "Conditions invalides : vérifiez taux, durées, montants et niveau KYC.",
+  INVALID_BRANCH:    "Agence inconnue.",
+  PRODUCT_INACTIVE:  "Ce produit n'est pas actif.",
+  PRODUCT_NOT_IN_BRANCH: "Ce produit n'est pas proposé dans l'agence du client.",
+  INVALID_TARGET:    "Le montant de l'objectif doit être un nombre entier positif.",
+  INVALID_CATEGORY:  "Motif trop long (40 caractères max).",
+  INVALID_DEADLINE:  "L'échéance ne peut pas être dans le passé.",
 }
 const ERROR_PATTERNS = [
   [/Unauthenticated|session/i,                  "Session expirée. Reconnectez-vous."],
@@ -81,6 +91,26 @@ const ERROR_PATTERNS = [
   [/No transactions found/i,                     "Aucune collecte aujourd'hui pour cet agent."],
   [/cannot approve your own/i,                   "Vous ne pouvez pas approuver votre propre demande."],
 ]
+/** Download rows as a semicolon-separated CSV that Excel opens with accents intact. */
+export function downloadCsv(filename, header, rows) {
+  const cell = (v) => {
+    if (v === null || v === undefined) return ""
+    // Numbers stay numbers (negative balances included)
+    if (typeof v === "number") return String(v)
+    // Text that Excel would run as a formula (names, reasons typed by staff)
+    let t = String(v)
+    if (/^[=+\-@\t\r]/.test(t)) t = "'" + t
+    return /[";\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
+  }
+  const text = [header, ...rows].map((r) => r.map(cell).join(";")).join("\r\n")
+  const url = URL.createObjectURL(new Blob(["\ufeff" + text], { type: "text/csv;charset=utf-8" }))
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 /**
  * French message for a server error: known ConvexError codes and server messages are mapped, anything else gets a generic message.
  */
@@ -252,10 +282,12 @@ export function KPI({ k }) {
       <div className="kpi-label">{Ic && <Ic />}{k.label}</div>
       <div className="kpi-value">{k.value}{k.unit && <span className="unit">{k.unit}</span>}</div>
       <div className="kpi-foot">
-        <span className={"delta " + (k.dir === "up" ? "up" : "down")}>
-          {k.dir === "up" ? <I.ArrowUR size={10} stroke="currentColor"/> : <I.ArrowDR size={10} stroke="currentColor"/>}
-          {k.delta}
-        </span>
+        {k.delta !== undefined && (
+          <span className={"delta " + (k.dir === "up" ? "up" : "down")}>
+            {k.dir === "up" ? <I.ArrowUR size={10} stroke="currentColor"/> : <I.ArrowDR size={10} stroke="currentColor"/>}
+            {k.delta}
+          </span>
+        )}
         <span>{k.note}</span>
       </div>
       <Sparkline data={k.spark} color={k.dir === "up" ? "var(--brand)" : "var(--ink-3)"}/>

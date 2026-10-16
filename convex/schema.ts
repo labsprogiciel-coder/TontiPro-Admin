@@ -59,6 +59,8 @@ export default defineSchema({
       v.literal("rejected")
     ),
     metadata: v.optional(v.any()), // Extra KYC info
+    // Product the client holds, set from the dashboard (portfolio.ts)
+    productId: v.optional(v.id("products")),
   })
     .index("by_phone", ["phoneNumber"])
     .index("by_status", ["status"])
@@ -147,4 +149,34 @@ reconciliations: defineTable({
   })
     .index("by_agent_date", ["agentId", "date"])
     .index("by_branch_status", ["branchId", "status"]),
+
+  // 7. PRODUCT CATALOGUE (one per organization, see portfolio.ts)
+  products: defineTable({
+    organizationId: v.id("organizations"),
+    code: v.string(), // upper case, unique in the organization
+    name: v.string(),
+    family: v.union(
+      v.literal("epargne"),
+      v.literal("credit"),
+      v.literal("tontine"),
+      v.literal("assurance"),
+    ),
+    summary: v.string(),
+    status: v.union(v.literal("actif"), v.literal("brouillon"), v.literal("archive")),
+    rate: v.number(), // % per year
+    durationMin: v.number(), // months; 0 / 0 = open-ended
+    durationMax: v.number(),
+    minDeposit: v.number(), // FCFA
+    maxBalance: v.number(), // FCFA, 0 = no ceiling
+    fees: v.number(),
+    feesUnit: v.union(v.literal("FCFA"), v.literal("%")),
+    grace: v.number(), // days
+    kycLevel: v.string(),
+    targets: v.array(v.string()),
+    branchIds: v.array(v.id("branches")), // branches allowed to sell it
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_code", ["organizationId", "code"]),
 });

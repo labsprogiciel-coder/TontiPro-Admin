@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
  * Client-side pagination over an in-memory list. Goes back to the first page
  * when the list length changes (new file, new mapping, import finished).
  */
-export function usePaged(rows, size = 50) {
+export function usePaged(rows, size = 20) {
   const [page, setPage] = useState(0)
   useEffect(() => { setPage(0) }, [rows.length])
   const pages = Math.max(1, Math.ceil(rows.length / size))

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { errorMessage, fmt, initials, Loading, PageHeader } from '../components'
+import { Pager, usePaged } from '../components/Pager'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -153,6 +154,7 @@ function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
     }
     return true
   }), [RECON_RECORDS, period, seg, agent, q])
+  const paged = usePaged(filtered)
 
   const counts = {
     tous:    RECON_RECORDS.length,
@@ -266,7 +268,7 @@ function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(r => {
+              {paged.rows.map(r => {
                 const v    = varianceOf(r)
                 const meta = STATUS_META[r.status]
                 const expectedTotal = sumLedger(r.expected)
@@ -315,9 +317,7 @@ function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
               Aucune réconciliation ne correspond aux filtres.
             </div>
           )}
-          <div className="table-foot">
-            <span>{filtered.length} sur {RECON_RECORDS.length} sessions</span>
-          </div>
+          <Pager paged={paged} unit="sessions" />
         </div>
       </div>
     </div>

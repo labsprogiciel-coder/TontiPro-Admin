@@ -4,6 +4,7 @@ import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import Novu from '../components/Inbox'
 import { errorMessage, fmt, fmtDateTime, initials, Loading, PageHeader, SearchInput } from '../components'
+import { Pager, usePaged } from '../components/Pager'
 
 const PERIODS = { "24h": 1, "7j": 7, "30j": 30, "Tout": null }
 
@@ -144,6 +145,7 @@ export default function TransactionsPage() {
     return true
   }), [rows, q, seg, channel, agent])
 
+  const paged = usePaged(filtered)
   const totalIn  = filtered.filter(t => t.type === "in"  && t.status === "validée").reduce((s, t) => s + t.amount, 0)
   const totalOut = filtered.filter(t => t.type === "out" && t.status === "validée").reduce((s, t) => s + t.amount, 0)
   const net = totalIn - totalOut
@@ -258,7 +260,7 @@ export default function TransactionsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(t => {
+              {paged.rows.map(t => {
                 const st = STATUS_STYLE[t.status]
                 return (
                   <tr key={t.id} onClick={() => setSelected(t)} className={selected && selected.id === t.id ? "selected" : ""}>
@@ -304,9 +306,7 @@ export default function TransactionsPage() {
               Aucun mouvement ne correspond aux filtres.
             </div>
           )}
-          <div className="table-foot">
-            <span>{filtered.length} sur {TX_FULL.length} mouvements</span>
-          </div>
+          <Pager paged={paged} unit="mouvements" />
         </div>
       </div>
 
