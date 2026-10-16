@@ -107,7 +107,7 @@ function GoalEditor({ goal, candidates, onClose }) {
                    onChange={e => setTarget(e.target.value.replace(/[^\d\s]/g, ""))}/>
           </div>
           <div className="field">
-            <label className="field-label">Motif (facultatif)</label>
+            <label className="field-label">Motif</label>
             <input className="input" list="goal-categories" value={category} maxLength={40}
                    placeholder="Scolarité, Logement…" onChange={e => setCategory(e.target.value)}/>
             <datalist id="goal-categories">
