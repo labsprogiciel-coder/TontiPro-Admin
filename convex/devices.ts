@@ -1,6 +1,8 @@
-// convex/devices.ts — TPE ↔ agent binding (it_admin only, via devices:bind)
+// convex/devices.ts — TPE ↔ agent binding (it_admin only, via devices:bind).
+// Agents' phones register themselves (registerMine) so the dashboard can
+// offer a one-click "Lier"; only an it_admin can actually bind.
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, MutationCtx, query } from "./_generated/server";
 import { authz } from "./authz";
 import { assignedDevice, requireUser } from "./users";
@@ -68,8 +70,67 @@ export const bindDevice = mutation({
       assignedTo: args.userId,
       boundBy: actor._id,
       boundAt: Date.now(),
+      requestedBy: undefined,
+      requestedAt: undefined,
     });
     return device._id;
+  },
+});
+
+const SERIAL_PATTERN = /^[A-Z0-9][A-Z0-9 ._-]{2,49}$/;
+
+/**
+ * Called by the mobile app's "liaison" screen: record this phone's serial as a
+ * device waiting to be bound to the signed-in agent, so it shows on the
+ * dashboard as "Non affecté · demandé par …". It never binds anything itself.
+ * Only active staff who can collect (field agents, supervisors) can register.
+ * An agent has at most one pending request: a new serial replaces the old one,
+ * and a device row that was only ever a request is deleted.
+ * Returns "bound" (already bound to the caller), "pending", or throws
+ * `SERIAL_TAKEN` when the serial is bound to someone else, `INVALID_SERIAL`.
+ */
+export const registerMine = mutation({
+  args: { serialNumber: v.string(), model: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    if (user.status !== "active") throw new ConvexError("SUSPENDED");
+    if (!(await authz.can(ctx, user._id, "transactions:collect"))) throw new ConvexError("FORBIDDEN");
+    const serialNumber = args.serialNumber.trim().toUpperCase();
+    if (!SERIAL_PATTERN.test(serialNumber)) throw new ConvexError("INVALID_SERIAL");
+    const model = args.model.trim().slice(0, 60) || "Inconnu";
+    const now = Date.now();
+
+    const device = await ctx.db
+      .query("devices")
+      .withIndex("by_serial", (q) => q.eq("serialNumber", serialNumber))
+      .unique();
+    if (device?.assignedTo === user._id) return "bound" as const;
+    if (device?.assignedTo) throw new ConvexError("SERIAL_TAKEN");
+
+    // Drop this agent's earlier requests for other serials
+    const earlier = await ctx.db
+      .query("devices")
+      .withIndex("by_requester", (q) => q.eq("requestedBy", user._id))
+      .collect();
+    for (const old of earlier) {
+      if (old.serialNumber === serialNumber || old.assignedTo) continue;
+      if (old.boundBy) await ctx.db.patch(old._id, { requestedBy: undefined, requestedAt: undefined });
+      else await ctx.db.delete(old._id);
+    }
+
+    if (device) {
+      await ctx.db.patch(device._id, { requestedBy: user._id, requestedAt: now, lastSync: now });
+    } else {
+      await ctx.db.insert("devices", {
+        serialNumber,
+        model,
+        status: "active",
+        lastSync: now,
+        requestedBy: user._id,
+        requestedAt: now,
+      });
+    }
+    return "pending" as const;
   },
 });
 

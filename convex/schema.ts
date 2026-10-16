@@ -71,11 +71,16 @@ export default defineSchema({
     assignedTo: v.optional(v.id("users")),
     boundBy: v.optional(v.id("users")), // Last it_admin to bind/unbind
     boundAt: v.optional(v.number()),
+    // Set when an agent's phone registers itself on the "liaison" screen
+    // (devices:registerMine); cleared once an it_admin binds the device.
+    requestedBy: v.optional(v.id("users")),
+    requestedAt: v.optional(v.number()),
     status: v.union(v.literal("active"), v.literal("maintenance"), v.literal("lost")),
     lastSync: v.number(),
   })
     .index("by_serial", ["serialNumber"])
-    .index("by_assignee", ["assignedTo"]),
+    .index("by_assignee", ["assignedTo"])
+    .index("by_requester", ["requestedBy"]),
 
   // 5. CASH COLLECTIONS (Transactions)
   transactions: defineTable({
