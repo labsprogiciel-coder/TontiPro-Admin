@@ -54,11 +54,13 @@ function BindCell({ device, agents, canBind }) {
 
   // Mirrors bindDevice: active field agents / supervisors without a terminal
   const eligible = agents.filter(a => a.status === "active" && a.canCollect && !a.device)
+  // The agent whose phone registered this serial, if they can still be bound
+  const requester = device.requestedBy ? eligible.find(a => a.id === device.requestedBy) : null
 
   if (!canBind) {
     return device.assignedTo
       ? <span style={{ fontWeight: 550 }}>{device.assignee}</span>
-      : <span className="cell-sub">Non affecté</span>
+      : <span className="cell-sub">{device.requester ? `Non affecté · demandé par ${device.requester}` : "Non affecté"}</span>
   }
 
   return (
@@ -70,6 +72,12 @@ function BindCell({ device, agents, canBind }) {
         </div>
       ) : device.status !== "active" ? (
         <span className="cell-sub">Non affecté · appareil indisponible</span>
+      ) : requester ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span className="tag attente">Demande de liaison</span>
+          <button className="btn brand sm" disabled={busy}
+            onClick={() => run(() => bind({ serialNumber: device.serial, userId: requester.id }))}>Lier à {requester.name}</button>
+        </div>
       ) : (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <select className="filter-select" value={userId} onChange={e => setUserId(e.target.value)} disabled={busy}>
@@ -80,7 +88,12 @@ function BindCell({ device, agents, canBind }) {
             onClick={() => run(() => bind({ serialNumber: device.serial, userId }))}>Lier</button>
         </div>
       )}
-      {device.boundBy && (
+      {requester && (
+        <div className="cell-sub" style={{ marginTop: 2 }}>
+          Téléphone enregistré par {requester.name} · {relTime(device.requestedAt)} · vérifiez que le numéro affiché sur son écran est le même
+        </div>
+      )}
+      {device.boundBy && !requester && (
         <div className="cell-sub" style={{ marginTop: 2 }}>
           {device.assignedTo ? "Lié" : "Délié"} par {device.boundBy} · {relTime(device.boundAt)}
         </div>
@@ -115,6 +128,10 @@ export default function AgentsPage() {
   }), [rows, q, branch, role])
 
   const fleet      = devices ?? []
+  // Phones waiting for a binding first, oldest request first
+  const pendingTpe  = fleet.filter(d => d.requestedBy).length
+  const sortedFleet = [...fleet].sort((a, b) =>
+    (a.requestedBy ? 0 : 1) - (b.requestedBy ? 0 : 1) || (a.requestedAt ?? 0) - (b.requestedAt ?? 0))
   const activeTpe  = fleet.filter(d => d.status === "active").length
   const staleTpe   = fleet.filter(d => d.status === "active" && Date.now() - d.lastSync > DEVICE_STALE_MS).length
   const collected  = AGENTS.reduce((s, a) => s + a.collected, 0)
@@ -330,6 +347,7 @@ export default function AgentsPage() {
       <div className="card">
         <div className="card-head">
           <div className="card-title">Parc de terminaux</div>
+          {pendingTpe > 0 && <span className="tag attente" style={{ marginLeft: 10 }}>{pendingTpe} demande{pendingTpe > 1 ? "s" : ""} de liaison</span>}
           <span className="card-sub" style={{ marginLeft: "auto" }}>{fleet.length} TPE enregistrés · liaison réservée à l'Admin IT</span>
         </div>
         <div className="table-wrap">
@@ -338,7 +356,7 @@ export default function AgentsPage() {
               <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Dernière sync</th></tr>
             </thead>
             <tbody>
-              {fleet.map(d => (
+              {sortedFleet.map(d => (
                 <tr key={d.serial}>
                   <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 550 }}>{d.serial}</td>
                   <td>{d.model}</td>

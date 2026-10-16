@@ -361,7 +361,10 @@ export const listDevices = query({
     const visible =
       scope === null
         ? devices
-        : devices.filter((d) => d.assignedTo && usersById.get(d.assignedTo)?.branchId === scope);
+        : devices.filter((d) => {
+            const owner = d.assignedTo ?? d.requestedBy;
+            return owner && usersById.get(owner)?.branchId === scope;
+          });
     return visible.map((d) => ({
       serial: d.serialNumber,
       model: d.model,
@@ -371,6 +374,10 @@ export const listDevices = query({
       assignee: d.assignedTo ? usersById.get(d.assignedTo)?.fullName ?? "—" : null,
       boundBy: d.boundBy ? usersById.get(d.boundBy)?.fullName ?? "—" : null,
       boundAt: d.boundAt ?? null,
+      // Pending "liaison" request from an agent's phone (devices:registerMine)
+      requestedBy: d.assignedTo ? null : d.requestedBy ?? null,
+      requester: !d.assignedTo && d.requestedBy ? usersById.get(d.requestedBy)?.fullName ?? "—" : null,
+      requestedAt: d.assignedTo ? null : d.requestedAt ?? null,
     }));
   },
 });
