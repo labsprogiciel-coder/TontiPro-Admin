@@ -3,6 +3,7 @@ import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { downloadCsv, errorMessage, fmt, KPI, Loading, PageHeader, SearchInput } from '../components'
+import { Pager, usePaged } from '../components/Pager'
 
 const PRODUCT_FAMILIES = [
   { k: "epargne",   label: "Épargne",        color: "var(--brand)",         icon: "Wallet" },
@@ -71,6 +72,7 @@ export default function ProductsPage() {
   const totalEncours = products.reduce((s, p) => s + p.encours, 0)
   const opened30 = products.reduce((s, p) => s + p.opened30, 0)
 
+  const paged = usePaged(filtered, 24)
   const usedFamilies = new Set(products.filter(p => p.status === "actif").map(p => p.family)).size
 
   const kpis = [
@@ -167,7 +169,7 @@ export default function ProductsPage() {
 
         {view === "cards" ? (
           <div className="prod-grid">
-            {filtered.map(p => (
+            {paged.rows.map(p => (
               <ProductCard key={p.id} p={p} canEdit={canEdit}
                 onEdit={() => setEditor({ mode: "edit", product: p })}
                 onDuplicate={() => onDuplicate(p)}
@@ -197,7 +199,7 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(p => {
+                {paged.rows.map(p => {
                   const f = familyMeta(p.family)
                   const sm = STATUS_META[p.status]
                   const Ic = I[f.icon]
@@ -237,6 +239,8 @@ export default function ProductsPage() {
             </table>
           </div>
         )}
+        {/* One pager for both views */}
+        <Pager paged={paged} unit="produits" />
       </div>
 
       {editor && (

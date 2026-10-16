@@ -3,6 +3,7 @@ import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { errorMessage, fmt, fmtDateTime, initials, relTime, KPI, Loading, PageHeader, SearchInput } from '../components'
+import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 
 /**
@@ -169,6 +170,7 @@ export default function ClientsPage() {
     n.has(id) ? n.delete(id) : n.add(id)
     setSelected(n)
   }
+  const paged = usePaged(filtered)
   const allOn = filtered.length > 0 && filtered.every(c => selected.has(c.id))
   const toggleAll = () => {
     if (allOn) setSelected(new Set())
@@ -258,7 +260,7 @@ export default function ClientsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(c => (
+                {paged.rows.map(c => (
                   <tr key={c.id} onClick={() => setOpenClient(c)} className={selected.has(c.id) ? "selected" : ""}>
                     <td onClick={e => e.stopPropagation()}>
                       <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
@@ -298,13 +300,11 @@ export default function ClientsPage() {
                 Aucun client ne correspond aux filtres.
               </div>
             )}
-            <div className="table-foot">
-              <span>Affichage de {filtered.length} sur {CLIENTS.length} clients</span>
-            </div>
+            <Pager paged={paged} unit="clients" />
           </div>
         ) : (
           <div className="card-grid">
-            {filtered.map(c => (
+            {paged.rows.map(c => (
               <div key={c.id} className="client-card" onClick={() => setOpenClient(c)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div className="avatar lg">{initials(c.name)}</div>
@@ -332,6 +332,7 @@ export default function ClientsPage() {
                 </div>
               </div>
             ))}
+            <div style={{ gridColumn: "1 / -1" }}><Pager paged={paged} unit="clients" /></div>
           </div>
         )}
       </div>

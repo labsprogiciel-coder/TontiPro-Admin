@@ -3,6 +3,7 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { errorMessage, fmt, initials, relTime, Loading, PageHeader, SearchInput } from '../components'
+import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 import { NewStaffDrawer, StaffDrawer } from '../components/StaffDrawers'
 
@@ -130,8 +131,10 @@ export default function AgentsPage() {
   const fleet      = devices ?? []
   // Phones waiting for a binding first, oldest request first
   const pendingTpe  = fleet.filter(d => d.requestedBy).length
+  const staffPage = usePaged(filtered)
   const sortedFleet = [...fleet].sort((a, b) =>
     (a.requestedBy ? 0 : 1) - (b.requestedBy ? 0 : 1) || (a.requestedAt ?? 0) - (b.requestedAt ?? 0))
+  const fleetPage = usePaged(sortedFleet)
   const activeTpe  = fleet.filter(d => d.status === "active").length
   const staleTpe   = fleet.filter(d => d.status === "active" && Date.now() - d.lastSync > DEVICE_STALE_MS).length
   const collected  = AGENTS.reduce((s, a) => s + a.collected, 0)
@@ -209,7 +212,7 @@ export default function AgentsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(a => {
+              {staffPage.rows.map(a => {
                 const tag = ROLE_TAGS[a.role] || ROLE_TAGS["Agent terrain"]
                 return (
                   <tr key={a.id}>
@@ -272,6 +275,7 @@ export default function AgentsPage() {
             </tbody>
           </table>
           {rows === undefined && <Loading />}
+          <Pager paged={staffPage} unit="membres" />
         </div>
       </div>
 
@@ -356,7 +360,7 @@ export default function AgentsPage() {
               <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Dernière sync</th></tr>
             </thead>
             <tbody>
-              {sortedFleet.map(d => (
+              {fleetPage.rows.map(d => (
                 <tr key={d.serial}>
                   <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 550 }}>{d.serial}</td>
                   <td>{d.model}</td>
@@ -368,6 +372,7 @@ export default function AgentsPage() {
             </tbody>
           </table>
           {devices === undefined && <Loading />}
+          <Pager paged={fleetPage} unit="terminaux" />
         </div>
       </div>
       {creating && (
