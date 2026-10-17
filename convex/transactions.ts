@@ -5,6 +5,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { authz } from "./authz";
 import { cleanFix } from "./devices";
+import { scheduleLedgerPost } from "./ledger";
 import { geoFix } from "./schema";
 import { assignedDevice, requireUser } from "./users";
 
@@ -125,7 +126,7 @@ async function recordMovement(
   const recordedAt =
     args.recordedAt !== undefined && Number.isFinite(args.recordedAt) ? args.recordedAt : undefined;
   const location = cleanFix(args.location);
-  return await ctx.db.insert("transactions", {
+  const id = await ctx.db.insert("transactions", {
     type,
     amount: args.amount,
     currency: organization?.currency ?? "XOF",
@@ -141,6 +142,8 @@ async function recordMovement(
     ...(recordedAt !== undefined ? { recordedAt } : {}),
     ...(location ? { location } : {}),
   });
+  await scheduleLedgerPost(ctx, id);
+  return id;
 }
 
 /**
@@ -263,11 +266,13 @@ export const reverseTransaction = mutation({
       .first();
     if (settled) throw new Error("Cannot reverse: daily cash already settled");
 
-    return await ctx.db.patch(args.transactionId, {
+    await ctx.db.patch(args.transactionId, {
       status: "reversed",
       reversalReason: args.reason,
       reversedBy: supervisor._id,
     });
+    // Reverted in the ledger as a new transaction, never edited
+    await scheduleLedgerPost(ctx, args.transactionId);
   },
 });
 
