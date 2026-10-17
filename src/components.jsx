@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { useQuery } from 'convex/react'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { api } from '../convex/_generated/api'
-import { openCommandPalette } from './components/CommandPalette'
 import { I } from './icons'
 import { MizoMark, MizoWordmark } from './components/Brand'
 import { canOpenPage } from './access'
@@ -126,6 +125,61 @@ export function Loading({ label = "Chargement…" }) {
   return <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>{label}</div>
 }
 
+/** Grey placeholder bar shown while data loads. */
+export function Skel({ w = "100%", h = 12, r = 6, style }) {
+  return <span className="skel" aria-hidden="true" style={{ width: w, height: h, borderRadius: r, ...style }} />
+}
+
+/** Placeholder KPI tiles, same grid as the real ones. */
+export function KpiSkeleton({ count = 4 }) {
+  return (
+    <section className="kpi-row" aria-busy="true" aria-label="Chargement">
+      {Array.from({ length: count }, (_, i) => (
+        <div className="kpi" key={i}>
+          <Skel w="45%" h={11} />
+          <Skel w="60%" h={26} style={{ margin: "14px 0 12px" }} />
+          <Skel w="70%" h={10} />
+        </div>
+      ))}
+    </section>
+  )
+}
+
+/** Placeholder table rows: an avatar-ish dot, a two-line label and a few cells. */
+export function TableSkeleton({ rows = 6, cols = 4 }) {
+  return (
+    <div className="skel-rows" aria-busy="true" aria-label="Chargement">
+      {Array.from({ length: rows }, (_, i) => (
+        <div className="skel-row" key={i}>
+          <Skel w={28} h={28} r={14} />
+          <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 6 }}>
+            <Skel w={`${55 + ((i * 17) % 30)}%`} h={11} />
+            <Skel w="35%" h={9} />
+          </div>
+          {Array.from({ length: cols - 1 }, (_, j) => <Skel key={j} w="auto" h={11} style={{ flex: 1 }} />)}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** KPI tiles and a table card, for pages whose data hasn't arrived yet. */
+export function PageSkeleton({ kpis = 4, rows = 8 }) {
+  return (
+    <>
+      <KpiSkeleton count={kpis} />
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="skel-row" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+          <Skel w={220} h={28} r={8} />
+          <span style={{ flex: 1 }} />
+          <Skel w={140} h={28} r={8} />
+        </div>
+        <TableSkeleton rows={rows} />
+      </div>
+    </>
+  )
+}
+
 /** Search field with icon, controlled by `value` / `onChange`. */
 export function SearchInput({ placeholder, value, onChange, width = 240 }) {
   return (
@@ -140,7 +194,7 @@ export function SearchInput({ placeholder, value, onChange, width = 240 }) {
  * Page top bar with breadcrumbs, title, optional `sub` line and actions (`children`).
  * crumbs: string[] — segments after "Mizo", e.g. ["Admin", "Agents & TPE"]
  */
-export function PageHeader({ crumbs = [], title, sub, children }) {
+export function PageHeader({ crumbs = [], title, children }) {
   const allCrumbs = title ? [...crumbs, title] : crumbs
   return (
     <>
@@ -154,16 +208,10 @@ export function PageHeader({ crumbs = [], title, sub, children }) {
           </span>
         ))}
       </div>
-      <div className="topbar-center">
-        <button className="cmd-trigger" onClick={openCommandPalette}>
-          <I.Search /><span>Rechercher…</span><kbd>⌘K</kbd>
-        </button>
-      </div>
       <div className="topbar-right">
         {children}
       </div>
     </header>
-    {sub && <div className="h1-sub" style={{ margin: "-6px 0 14px" }}>{sub}</div>}
     </>
   )
 }
@@ -262,11 +310,6 @@ export function Topbar({ inbox }) {
   return (
     <div className="topbar">
       <div className="crumbs"><strong>Mizo</strong> &nbsp;/&nbsp; Tableau de bord</div>
-      <div className="topbar-center">
-        <button className="cmd-trigger" onClick={openCommandPalette}>
-          <I.Search /><span>Rechercher…</span><kbd>⌘K</kbd>
-        </button>
-      </div>
       <div className="topbar-right">
         {inbox}
       </div>

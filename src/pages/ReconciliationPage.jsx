@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { errorMessage, fmt, initials, Loading, PageHeader } from '../components'
+import { errorMessage, fmt, initials, PageHeader, PageSkeleton } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -121,7 +121,14 @@ export default function ReconciliationPage() {
     return [...open.map(fromOpenSession), ...recs.map(fromReconciliation)]
   }, [recs, open])
 
-  if (records === undefined) return <Loading />
+  if (records === undefined) {
+    return (
+      <div className="recon-page">
+        <PageHeader crumbs={["Réconciliation"]} title="Réconciliation de caisse" />
+        <PageSkeleton />
+      </div>
+    )
+  }
   const selected = records.find(r => r.id === selectedId)
 
   if (selected) {
@@ -184,10 +191,7 @@ function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
         <button className="btn"><I.Export size={14}/>Exporter</button>
       </PageHeader>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-        <div className="h1-sub" style={{ flex: 1, textTransform: "capitalize" }}>
-          {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {openCount} session{openCount > 1 ? "s" : ""} ouverte{openCount > 1 ? "s" : ""}
-        </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 18 }}>
         <div className="search" style={{ width: 240 }}>
           <I.Search /><input placeholder="ID, agent, caisse…" value={q} onChange={e => setQ(e.target.value)} />
         </div>

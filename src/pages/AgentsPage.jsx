@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { errorMessage, fmt, initials, relTime, Loading, PageHeader, SearchInput } from '../components'
+import { errorMessage, fmt, initials, relTime, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 import { NewStaffDrawer, StaffDrawer } from '../components/StaffDrawers'
@@ -152,7 +152,6 @@ export default function AgentsPage() {
       <PageHeader
         crumbs={["Admin", "Agents & TPE"]}
         title="Agents & terminaux"
-        sub={`${AGENTS.length} agents · ${fleet.length} TPE · ${branches.length - 1} agences`}
       >
         <Novu />
       </PageHeader>
@@ -162,23 +161,25 @@ export default function AgentsPage() {
           <button className="btn brand" onClick={() => setCreating(true)}><I.Plus size={14} stroke="white"/>Nouvel agent</button>
         )}
       </div>
-      <section className="kpi-row">
-        {AGENT_KPIS.map(k => (
-          <div className="kpi" key={k.label}>
-            <div className="kpi-label">
-              {k.icon === "users"   && <I.Users/>}
-              {k.icon === "wallet"  && <I.Wallet/>}
-              {k.icon === "receipt" && <I.Receipt/>}
-              {k.icon === "cloud"   && <I.Cloud/>}
-              {k.label}
+      {rows === undefined || devices === undefined ? <KpiSkeleton /> : (
+        <section className="kpi-row">
+          {AGENT_KPIS.map(k => (
+            <div className="kpi" key={k.label}>
+              <div className="kpi-label">
+                {k.icon === "users"   && <I.Users/>}
+                {k.icon === "wallet"  && <I.Wallet/>}
+                {k.icon === "receipt" && <I.Receipt/>}
+                {k.icon === "cloud"   && <I.Cloud/>}
+                {k.label}
+              </div>
+              <div className="kpi-value">{k.value}{k.unit && <span className="unit">{k.unit}</span>}</div>
+              <div className="kpi-foot">
+                <span>{k.note}</span>
+              </div>
             </div>
-            <div className="kpi-value">{k.value}{k.unit && <span className="unit">{k.unit}</span>}</div>
-            <div className="kpi-foot">
-              <span>{k.note}</span>
-            </div>
-          </div>
-        ))}
-      </section>
+          ))}
+        </section>
+      )}
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card-head">
           <div className="card-title">Flotte d'agents · TPE en service</div>
@@ -274,7 +275,7 @@ export default function AgentsPage() {
               })}
             </tbody>
           </table>
-          {rows === undefined && <Loading />}
+          {rows === undefined && <TableSkeleton rows={6} />}
           <Pager paged={staffPage} unit="membres" />
         </div>
       </div>
@@ -371,7 +372,7 @@ export default function AgentsPage() {
               ))}
             </tbody>
           </table>
-          {devices === undefined && <Loading />}
+          {devices === undefined && <TableSkeleton rows={6} />}
           <Pager paged={fleetPage} unit="terminaux" />
         </div>
       </div>

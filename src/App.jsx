@@ -4,7 +4,6 @@ import { useAuthActions } from '@convex-dev/auth/react'
 import { api } from '../convex/_generated/api'
 import { Loading, Sidebar } from './components'
 import LoginPage from './pages/LoginPage'
-import AppCommandPalette from './components/CommandPalette'
 import DashboardPage from './pages/DashboardPage'
 import ClientsPage from './pages/ClientsPage'
 import TransactionsPage from './pages/TransactionsPage'
@@ -83,7 +82,6 @@ function Shell({ can }) {
       <main className="main">
         <Page />
       </main>
-      <AppCommandPalette setActive={setActive} can={can} />
     </div>
   )
 }
