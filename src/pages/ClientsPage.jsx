@@ -86,7 +86,7 @@ function ClientDrawer({ client, onClose }) {
               <div className="card-title">Historique récent</div>
                           </div>
             <div className="tx-list" style={{ padding: 0 }}>
-              {history === undefined && <TableSkeleton rows={3} />}
+              {history === undefined && <TableSkeleton rows={3} label="Chargement de l'historique…" />}
               {history && history.length === 0 && <div className="cell-sub" style={{ padding: 12 }}>Aucun mouvement</div>}
               {(history ?? []).map((t, i) => (
                 <div key={i} className="tx-row">
@@ -295,7 +295,7 @@ export default function ClientsPage() {
                 ))}
               </tbody>
             </table>
-            {rows === undefined && <TableSkeleton rows={6} />}
+            {rows === undefined && <TableSkeleton rows={6} label="Chargement des clients…" />}
             {rows !== undefined && filtered.length === 0 && (
               <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
                 Aucun client ne correspond aux filtres.

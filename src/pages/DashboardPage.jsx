@@ -2,7 +2,7 @@ import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import {
   Topbar, KPI, ClientsCard, TransactionsCard,
-  VolumeChart, QuickActionsCard, KpiSkeleton, Skel, fmt,
+  VolumeChart, QuickActionsCard, KpiSkeleton, LoadingStatus, Skel, fmt,
 } from '../components'
 import Novu from '../components/Inbox'
 
@@ -47,7 +47,7 @@ export default function DashboardPage() {
 /** Same layout as the loaded dashboard: KPI tiles, then two rows of two cards. */
 function DashboardSkeleton() {
   const card = (h) => (
-    <div className="card" style={{ padding: 18, minHeight: h }}>
+    <div className="card" style={{ padding: 18, minHeight: h }} aria-hidden="true">
       <Skel w="40%" h={13} />
       <Skel w="25%" h={10} style={{ margin: "8px 0 20px" }} />
       <Skel h={h - 90} r={8} />
@@ -55,6 +55,7 @@ function DashboardSkeleton() {
   )
   return (
     <>
+      <LoadingStatus label="Chargement du tableau de bord…" />
       <KpiSkeleton />
       <div className="row cols-2" style={{ marginBottom: 14 }}>{card(280)}{card(280)}</div>
       <div className="row cols-2">{card(320)}{card(320)}</div>

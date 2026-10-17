@@ -301,7 +301,7 @@ export default function TransactionsPage() {
               })}
             </tbody>
           </table>
-          {rows === undefined && <TableSkeleton rows={6} />}
+          {rows === undefined && <TableSkeleton rows={6} label="Chargement des mouvements…" />}
           {rows !== undefined && filtered.length === 0 && (
             <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
               Aucun mouvement ne correspond aux filtres.

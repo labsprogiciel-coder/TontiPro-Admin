@@ -275,7 +275,7 @@ export default function AgentsPage() {
               })}
             </tbody>
           </table>
-          {rows === undefined && <TableSkeleton rows={6} />}
+          {rows === undefined && <TableSkeleton rows={6} label="Chargement du personnel…" />}
           <Pager paged={staffPage} unit="membres" />
         </div>
       </div>
@@ -372,7 +372,7 @@ export default function AgentsPage() {
               ))}
             </tbody>
           </table>
-          {devices === undefined && <TableSkeleton rows={6} />}
+          {devices === undefined && <TableSkeleton rows={6} label="Chargement des terminaux…" />}
           <Pager paged={fleetPage} unit="terminaux" />
         </div>
       </div>

@@ -130,10 +130,19 @@ export function Skel({ w = "100%", h = 12, r = 6, style }) {
   return <span className="skel" aria-hidden="true" style={{ width: w, height: h, borderRadius: r, ...style }} />
 }
 
-/** Placeholder KPI tiles, same grid as the real ones. */
+/**
+ * The one screen-reader announcement for a loading state. The placeholders
+ * themselves are decorative (aria-hidden), so a page showing several of
+ * them still announces once.
+ */
+export function LoadingStatus({ label = "Chargement…" }) {
+  return <span role="status" className="sr-only">{label}</span>
+}
+
+/** Placeholder KPI tiles, same grid as the real ones (decorative). */
 export function KpiSkeleton({ count = 4 }) {
   return (
-    <section className="kpi-row" aria-busy="true" aria-label="Chargement">
+    <section className="kpi-row" aria-hidden="true">
       {Array.from({ length: count }, (_, i) => (
         <div className="kpi" key={i}>
           <Skel w="45%" h={11} />
@@ -145,10 +154,15 @@ export function KpiSkeleton({ count = 4 }) {
   )
 }
 
-/** Placeholder table rows: an avatar-ish dot, a two-line label and a few cells. */
-export function TableSkeleton({ rows = 6, cols = 4 }) {
+/**
+ * Placeholder table rows: an avatar-ish dot, a two-line label and a few
+ * cells. Pass `label` to announce the loading state from here.
+ */
+export function TableSkeleton({ rows = 6, cols = 4, label }) {
   return (
-    <div className="skel-rows" aria-busy="true" aria-label="Chargement">
+    <>
+    {label && <LoadingStatus label={label} />}
+    <div className="skel-rows" aria-hidden="true">
       {Array.from({ length: rows }, (_, i) => (
         <div className="skel-row" key={i}>
           <Skel w={28} h={28} r={14} />
@@ -160,6 +174,7 @@ export function TableSkeleton({ rows = 6, cols = 4 }) {
         </div>
       ))}
     </div>
+    </>
   )
 }
 
@@ -167,8 +182,9 @@ export function TableSkeleton({ rows = 6, cols = 4 }) {
 export function PageSkeleton({ kpis = 4, rows = 8 }) {
   return (
     <>
+      <LoadingStatus />
       <KpiSkeleton count={kpis} />
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" style={{ marginBottom: 14 }} aria-hidden="true">
         <div className="skel-row" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
           <Skel w={220} h={28} r={8} />
           <span style={{ flex: 1 }} />
