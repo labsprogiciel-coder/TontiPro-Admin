@@ -14,14 +14,15 @@ auth.addHttpRoutes(http);
 // Requests and responses are JSON. Errors are { error: CODE, ...details }.
 // Reference: docs/partner-api.md
 
-const json = (status: number, body: unknown) =>
+const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers },
   });
 
 const STATUS_BY_ERROR: Record<string, number> = {
   UNAUTHORIZED: 401,
+  PARTNER_NOT_FOUND: 404,
   CUSTOMER_NOT_FOUND: 404,
   PRODUCT_NOT_FOUND: 404,
   TRANSACTION_NOT_FOUND: 404,
@@ -121,6 +122,27 @@ http.route({
   path: "/api/v1/catalogue",
   method: "GET",
   handler: endpoint((ctx, keyHash) => ctx.runQuery(internal.channelApi.catalogue, { keyHash })),
+});
+
+// Public: the partner's offer as its app shows it, with no key. Any origin may
+// read it (the app also runs on the web); a short cache keeps load low.
+http.route({
+  path: "/api/v1/public/catalogue",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const headers = { "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=300" };
+    const partnerId = new URL(request.url).searchParams.get("partner");
+    if (!partnerId) return json(400, { error: "INVALID_REQUEST", message: "partner is required" }, headers);
+    try {
+      return json(200, await ctx.runQuery(internal.channelApi.publicCatalogue, { partnerId }), headers);
+    } catch (e) {
+      if (e instanceof ConvexError && errorData(e.data).code === "PARTNER_NOT_FOUND") {
+        return json(404, { error: "PARTNER_NOT_FOUND" }, headers);
+      }
+      console.error(e);
+      return json(500, { error: "INTERNAL" }, headers);
+    }
+  }),
 });
 
 http.route({
