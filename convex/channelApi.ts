@@ -13,6 +13,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
 import { ApiCaller, publicPartner, requireApiClient } from "./apiClients";
 import { cleanIdNumber, cleanName, cleanPhone } from "./customers";
+import { scheduleLedgerPost } from "./ledger";
 import { customerBalance, isWithdrawal, MAX_AMOUNT, signedAmount } from "./transactions";
 
 const DAY = 86_400_000;
@@ -334,6 +335,7 @@ async function recordMovement(
     timestamp: now,
     clientId: reference,
   });
+  await scheduleLedgerPost(ctx, transactionId);
   const balance = state.balance + (type === "deposit" ? args.amount : -args.amount);
   return { transactionId, status: "completed" as const, balance, replayed: false };
 }

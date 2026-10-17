@@ -150,12 +150,28 @@ export default defineSchema({
     recordedAt: v.optional(v.number()),
     // Where the TPE was when the agent recorded it
     location: v.optional(geoFix),
+    // Audit copy in the Formance ledger (ledger.ts): its transaction id, the
+    // id of its revert once reversed, and the last posting error if any
+    ledgerTxId: v.optional(v.string()),
+    ledgerRevertTxId: v.optional(v.string()),
+    ledgerError: v.optional(v.string()),
   })
     .index("by_agent_date", ["agentId"]) // Convex appends _creationTime to every index
     .index("by_branch", ["branchId"])
     .index("by_customer", ["customerId"])
     .index("by_customer_product", ["customerId", "productId"])
-    .index("by_client_id", ["clientId"]),
+    .index("by_client_id", ["clientId"])
+    .index("by_ledger_tx", ["ledgerTxId"])
+    .index("by_ledger_revert", ["status", "ledgerRevertTxId"]),
+
+  // Nightly comparison of customer balances with the Formance ledger (ledger.ts)
+  ledgerChecks: defineTable({
+    at: v.number(),
+    accounts: v.number(),
+    unposted: v.number(), // movements not (fully) in the ledger yet
+    mismatches: v.array(v.object({ account: v.string(), convex: v.number(), ledger: v.number() })),
+    error: v.optional(v.string()), // the check couldn't read the ledger
+  }),
 
   // 6. DISBURSEMENTS (Maker-Checker Workflow)
   disbursements: defineTable({
