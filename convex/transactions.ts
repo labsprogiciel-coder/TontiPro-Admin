@@ -6,7 +6,7 @@ import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { authz } from "./authz";
 import { assignedDevice, requireUser } from "./users";
 
-const MAX_AMOUNT = 100_000_000; // sanity cap, in the branch currency
+export const MAX_AMOUNT = 100_000_000; // sanity cap, in the branch currency
 /**
  * Largest withdrawal an agent may pay out while offline. The app enforces it
  * before queuing; the server refuses anything larger so a modified client

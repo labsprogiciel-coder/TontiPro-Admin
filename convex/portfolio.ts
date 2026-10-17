@@ -115,6 +115,7 @@ export const listProducts = query({
         grace: p.grace,
         kycLevel: p.kycLevel,
         targets: p.targets,
+        channels: p.channels ?? [],
         branchIds: p.branchIds,
         branches: p.branchIds.map((id) => branchNames.get(id) ?? "—"),
         clients: holders.length,
@@ -154,6 +155,8 @@ const productFields = {
   kycLevel: v.string(),
   targets: v.array(v.string()),
   branchIds: v.array(v.id("branches")),
+  // Partner apps that may offer it through the API (channelApi.ts)
+  channels: v.optional(v.array(v.literal("nafa"))),
 };
 
 /** Create a product (no id) or update one of the caller's organization. */
@@ -206,6 +209,7 @@ export const saveProduct = mutation({
       summary,
       targets,
       branchIds,
+      channels: [...new Set(args.channels ?? [])],
       updatedBy: user._id,
       updatedAt: Date.now(),
     };

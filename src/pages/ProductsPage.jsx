@@ -14,6 +14,8 @@ const PRODUCT_FAMILIES = [
 
 const ALL_TARGETS = ["Particuliers", "TPE", "Commerçants", "Agriculteurs", "Coopératives", "Familles", "Groupes", "Parents"]
 const KYC_LEVELS = ["Allégée", "Standard", "Renforcée"]
+// Partner apps that can sell a product through the API (convex/channelApi.ts)
+const ALL_CHANNELS = [{ k: "nafa", label: "Nafa" }]
 
 const STATUS_META = {
   actif:     { label: "Actif",     class: "actif"   },
@@ -25,7 +27,7 @@ function familyMeta(k) { return PRODUCT_FAMILIES.find(f => f.k === k) || PRODUCT
 
 // Fields saveProduct takes (the rest of a row is computed by the server)
 const PRODUCT_FIELDS = ["code", "name", "family", "summary", "status", "rate", "durationMin", "durationMax",
-  "minDeposit", "maxBalance", "fees", "feesUnit", "grace", "kycLevel", "targets", "branchIds"]
+  "minDeposit", "maxBalance", "fees", "feesUnit", "grace", "kycLevel", "targets", "branchIds", "channels"]
 
 function blankProduct(branchId) {
   return {
@@ -37,6 +39,7 @@ function blankProduct(branchId) {
     kycLevel: "Standard",
     targets: ["Particuliers"],
     branchIds: branchId ? [branchId] : [],
+    channels: [],
   }
 }
 
@@ -518,6 +521,18 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
                   ))}
                 </div>
               </div>
+
+              <div className="field">
+                <label className="field-label">Applications partenaires</label>
+                <div className="chip-picker">
+                  {ALL_CHANNELS.map(c => (
+                    <button key={c.k} className={"chip-pick " + (p.channels.includes(c.k) ? "on" : "")}
+                            onClick={() => toggleArr("channels", c.k)}>
+                      {p.channels.includes(c.k) && <I.Check size={12}/>}{c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </>
           )}
 
@@ -559,6 +574,7 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
                   <dt>Plafond</dt><dd>{p.maxBalance ? `${fmt(p.maxBalance)} FCFA` : "Illimité"}</dd>
                   <dt>Agences</dt><dd>{p.branchIds.map(branchName).join(", ") || "—"}</dd>
                   <dt>Cibles</dt><dd>{p.targets.join(", ") || "—"}</dd>
+                  <dt>Partenaires</dt><dd>{p.channels.map(k => ALL_CHANNELS.find(c => c.k === k)?.label ?? k).join(", ") || "—"}</dd>
                 </dl>
               </div>
             </>
