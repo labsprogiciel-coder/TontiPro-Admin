@@ -20,14 +20,44 @@ const STATUS_DOT = {
 }
 const STATUS_LABEL = { active: "actif", suspended: "suspendu" }
 
-const DEVICE_STALE_MS = 60 * 60 * 1000
+// Phones check in every ~15 min while the app is open (devices:heartbeat);
+// two missed check-ins and the TPE counts as offline.
+const DEVICE_STALE_MS = 35 * 60 * 1000
 
-/** Device health tag: maintenance, lost, stale sync (over an hour) or up to date. */
+const NETWORK_LABELS = { wifi: "Wi-Fi", cellular: "Données mobiles", none: "Hors réseau", other: "Réseau" }
+
+/** Device health tag: maintenance, lost, offline (no recent check-in) or online. */
 function SyncTag({ d }) {
   if (d.status === "maintenance") return <span className="tag attente">Maintenance</span>
   if (d.status === "lost")        return <span className="tag archive">Perdu</span>
-  if (Date.now() - d.lastSync > DEVICE_STALE_MS) return <span className="tag attente">Sync ancienne</span>
-  return <span className="tag actif">À jour</span>
+  if (Date.now() - d.lastSync > DEVICE_STALE_MS) return <span className="tag attente">Hors ligne</span>
+  return <span className="tag actif">En ligne</span>
+}
+
+/** What the phone reported at its last check-in: battery, network, unsynced operations, app version. */
+function PhoneCell({ t }) {
+  if (!t) return <span className="cell-sub">Pas encore de rapport</span>
+  const pct = t.battery !== undefined ? Math.round(t.battery * 100) : null
+  const low = pct !== null && pct <= 20 && !t.charging
+  return (
+    <div style={{ lineHeight: 1.35 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12.5 }}>
+        {pct !== null && (
+          <span style={{ color: low ? "var(--neg)" : "var(--ink)", fontWeight: low ? 600 : 500, fontVariantNumeric: "tabular-nums" }}
+                title={t.charging ? "En charge" : "Sur batterie"}>
+            {t.charging ? "⚡" : "🔋"} {pct}%
+          </span>
+        )}
+        {t.network && <span style={{ color: t.network === "none" ? "var(--neg)" : "var(--ink-2)" }}>{NETWORK_LABELS[t.network]}</span>}
+        {t.pendingOps > 0 && (
+          <span style={{ color: "var(--warn)", fontWeight: 600 }} title="Opérations enregistrées sur le téléphone, pas encore reçues par le serveur">
+            {t.pendingOps} en attente
+          </span>
+        )}
+      </div>
+      <div className="cell-sub">{[t.appVersion && `App ${t.appVersion}`, t.osVersion && `Android ${t.osVersion}`].filter(Boolean).join(" · ") || "—"}</div>
+    </div>
+  )
 }
 
 /** Render TPE assignment controls and audit details; mutations enforce devices:bind permission. */
@@ -141,7 +171,7 @@ export default function AgentsPage() {
   const txMonth    = AGENTS.reduce((s, a) => s + a.txMonth, 0)
   const collectors = AGENTS.filter(a => a.txMonth > 0)
   const AGENT_KPIS = [
-    { label: "TPE en service",    value: String(activeTpe), unit: `/${fleet.length}`, note: `${fleet.length - activeTpe} hors service · ${staleTpe} sync ancienne`, icon: "users" },
+    { label: "TPE en service",    value: String(activeTpe), unit: `/${fleet.length}`, note: `${fleet.length - activeTpe} hors service · ${staleTpe} hors ligne`, icon: "users" },
     { label: "Collecte du mois",  value: fmt(collected),    unit: "FCFA", note: `${txMonth} transactions`, icon: "wallet" },
     { label: "Agents actifs",     value: String(AGENTS.filter(a => a.status === "active").length), unit: `/${AGENTS.length}`, note: `${branches.length - 1} agences`, icon: "cloud" },
     { label: "Tx / agent · moy.", value: String(collectors.length ? Math.round(txMonth / collectors.length) : 0), unit: "", note: "ce mois, agents collecteurs", icon: "receipt" },
@@ -358,7 +388,7 @@ export default function AgentsPage() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Dernière sync</th></tr>
+              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Téléphone</th><th>Dernière activité</th></tr>
             </thead>
             <tbody>
               {fleetPage.rows.map(d => (
@@ -367,6 +397,7 @@ export default function AgentsPage() {
                   <td>{d.model}</td>
                   <td><BindCell device={d} agents={AGENTS} canBind={!!can.bind}/></td>
                   <td><SyncTag d={d}/></td>
+                  <td><PhoneCell t={d.telemetry}/></td>
                   <td className="cell-sub">{relTime(d.lastSync)}</td>
                 </tr>
               ))}

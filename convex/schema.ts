@@ -78,7 +78,17 @@ export default defineSchema({
     requestedBy: v.optional(v.id("users")),
     requestedAt: v.optional(v.number()),
     status: v.union(v.literal("active"), v.literal("maintenance"), v.literal("lost")),
-    lastSync: v.number(),
+    lastSync: v.number(), // last time the phone checked in (devices:heartbeat)
+    // What the phone reported at its last check-in
+    telemetry: v.optional(v.object({
+      appVersion: v.optional(v.string()), // e.g. "1.0.0 (42)"
+      updateId: v.optional(v.string()), // EAS Update running on top of the build
+      osVersion: v.optional(v.string()),
+      battery: v.optional(v.number()), // 0..1
+      charging: v.optional(v.boolean()),
+      network: v.optional(v.union(v.literal("wifi"), v.literal("cellular"), v.literal("none"), v.literal("other"))),
+      pendingOps: v.optional(v.number()), // operations recorded offline, not yet on the server
+    })),
   })
     .index("by_serial", ["serialNumber"])
     .index("by_assignee", ["assignedTo"])

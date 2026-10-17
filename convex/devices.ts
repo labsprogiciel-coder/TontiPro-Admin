@@ -167,3 +167,55 @@ export const myDevice = query({
     return assignedDevice(ctx, user._id);
   },
 });
+
+const short = (max: number) => (s: string | undefined) =>
+  s === undefined ? undefined : s.trim().slice(0, max) || undefined;
+
+/**
+ * Check-in from the agent's phone (every ~15 min while the app is open):
+ * stamps lastSync and stores what the phone reports. Only the agent the
+ * device is bound to can report for it; anything else is ignored, so a
+ * phone that was unbound meanwhile doesn't error in a loop.
+ */
+export const heartbeat = mutation({
+  args: {
+    serialNumber: v.string(),
+    appVersion: v.optional(v.string()),
+    updateId: v.optional(v.string()),
+    osVersion: v.optional(v.string()),
+    battery: v.optional(v.number()),
+    charging: v.optional(v.boolean()),
+    network: v.optional(v.union(v.literal("wifi"), v.literal("cellular"), v.literal("none"), v.literal("other"))),
+    pendingOps: v.optional(v.number()),
+  },
+  handler: async (ctx, { serialNumber, ...report }) => {
+    const user = await requireUser(ctx);
+    const device = await ctx.db
+      .query("devices")
+      .withIndex("by_serial", (q) => q.eq("serialNumber", serialNumber.trim().toUpperCase()))
+      .unique();
+    if (!device || device.assignedTo !== user._id) return "ignored" as const;
+
+    const battery =
+      report.battery !== undefined && Number.isFinite(report.battery)
+        ? Math.min(1, Math.max(0, report.battery))
+        : undefined;
+    const pendingOps =
+      report.pendingOps !== undefined && Number.isFinite(report.pendingOps)
+        ? Math.min(100_000, Math.max(0, Math.round(report.pendingOps)))
+        : undefined;
+    await ctx.db.patch(device._id, {
+      lastSync: Date.now(),
+      telemetry: {
+        appVersion: short(40)(report.appVersion),
+        updateId: short(64)(report.updateId),
+        osVersion: short(40)(report.osVersion),
+        battery,
+        charging: report.charging,
+        network: report.network,
+        pendingOps,
+      },
+    });
+    return "ok" as const;
+  },
+});
