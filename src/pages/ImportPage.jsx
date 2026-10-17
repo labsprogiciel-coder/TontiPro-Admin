@@ -116,7 +116,6 @@ export default function ImportPage() {
       <PageHeader
         crumbs={["Admin"]}
         title="Importer"
-        sub={`Clients ou historique de transactions depuis un fichier Excel ou CSV · agence ${me?.branch ?? "…"}`}
       />
 
       <div className="card" style={{ marginBottom: 14 }}>

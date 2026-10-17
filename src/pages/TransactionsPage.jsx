@@ -3,7 +3,7 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import Novu from '../components/Inbox'
-import { errorMessage, fmt, fmtDateTime, initials, Loading, PageHeader, SearchInput } from '../components'
+import { errorMessage, fmt, fmtDateTime, initials, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 
 const PERIODS = { "24h": 1, "7j": 7, "30j": 30, "Tout": null }
@@ -174,27 +174,28 @@ export default function TransactionsPage() {
       <PageHeader
         crumbs={["Transactions"]}
         title="Transactions"
-        sub={`${TX_FULL.length} mouvements`}
       >
         <Novu />
       </PageHeader>
 
-      <section className="kpi-row">
-        {TX_KPIS.map(k => (
-          <div className="kpi" key={k.label}>
-            <div className="kpi-label">
-              {k.icon === "wallet"  && <I.Wallet/>}
-              {k.icon === "receipt" && <I.Receipt/>}
-              {k.icon === "cloud"   && <I.Cloud/>}
-              {k.label}
+      {rows === undefined ? <KpiSkeleton /> : (
+        <section className="kpi-row">
+          {TX_KPIS.map(k => (
+            <div className="kpi" key={k.label}>
+              <div className="kpi-label">
+                {k.icon === "wallet"  && <I.Wallet/>}
+                {k.icon === "receipt" && <I.Receipt/>}
+                {k.icon === "cloud"   && <I.Cloud/>}
+                {k.label}
+              </div>
+              <div className="kpi-value">{k.value}{k.unit && <span className="unit">{k.unit}</span>}</div>
+              <div className="kpi-foot">
+                <span>{k.note}</span>
+              </div>
             </div>
-            <div className="kpi-value">{k.value}{k.unit && <span className="unit">{k.unit}</span>}</div>
-            <div className="kpi-foot">
-              <span>{k.note}</span>
-            </div>
-          </div>
-        ))}
-      </section>
+          ))}
+        </section>
+      )}
       
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <SearchInput placeholder="Client, ID, TPE…" value={q} onChange={e => setQ(e.target.value)} />
@@ -300,7 +301,7 @@ export default function TransactionsPage() {
               })}
             </tbody>
           </table>
-          {rows === undefined && <Loading />}
+          {rows === undefined && <TableSkeleton rows={6} label="Chargement des mouvements…" />}
           {rows !== undefined && filtered.length === 0 && (
             <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
               Aucun mouvement ne correspond aux filtres.

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { downloadCsv, errorMessage, fmt, KPI, Loading, PageHeader, SearchInput } from '../components'
+import { downloadCsv, errorMessage, fmt, KPI, PageHeader, PageSkeleton, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 
 const PRODUCT_FAMILIES = [
@@ -96,7 +96,14 @@ export default function ProductsPage() {
       p.targets.join(", "), p.clients, p.encours]),
   )
 
-  if (data === undefined) return <Loading />
+  if (data === undefined) {
+    return (
+      <div className="products-page">
+        <PageHeader crumbs={["Produits"]} title="Catalogue de produits" />
+        <PageSkeleton />
+      </div>
+    )
+  }
 
   return (
     <div className="products-page">

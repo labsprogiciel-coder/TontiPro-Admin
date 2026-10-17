@@ -66,7 +66,6 @@ export default function SettingsPage() {
       <PageHeader
         crumbs={["Paramètres"]}
         title="Paramètres"
-        sub="Configuration de l'institution, des terminaux et de la sécurité"
       >
         {isEditing ? (
           <>

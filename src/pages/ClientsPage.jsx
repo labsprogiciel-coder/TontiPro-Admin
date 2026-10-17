@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { errorMessage, fmt, fmtDateTime, initials, relTime, KPI, Loading, PageHeader, SearchInput } from '../components'
+import { errorMessage, fmt, fmtDateTime, initials, relTime, KPI, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 
@@ -86,7 +86,7 @@ function ClientDrawer({ client, onClose }) {
               <div className="card-title">Historique récent</div>
                           </div>
             <div className="tx-list" style={{ padding: 0 }}>
-              {history === undefined && <Loading />}
+              {history === undefined && <TableSkeleton rows={3} label="Chargement de l'historique…" />}
               {history && history.length === 0 && <div className="cell-sub" style={{ padding: 12 }}>Aucun mouvement</div>}
               {(history ?? []).map((t, i) => (
                 <div key={i} className="tx-row">
@@ -190,14 +190,15 @@ export default function ClientsPage() {
       <PageHeader
         crumbs={["Clients"]}
         title="Clients"
-        sub={`${CLIENTS.length} fiches · ${counts.actif} actives · ${counts.attente} en attente KYC`}
       >
         <Novu />
       </PageHeader>
 
-      <section className="kpi-row">
-        {CLIENT_KPIS.map(k => <KPI key={k.label} k={k}/>)}
-      </section>
+      {rows === undefined ? <KpiSkeleton /> : (
+        <section className="kpi-row">
+          {CLIENT_KPIS.map(k => <KPI key={k.label} k={k}/>)}
+        </section>
+      )}
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <SearchInput placeholder="Nom, téléphone, village…" value={q} onChange={e => setQ(e.target.value)} />
         <button className="btn"><I.Export size={14}/>Exporter</button>
@@ -294,7 +295,7 @@ export default function ClientsPage() {
                 ))}
               </tbody>
             </table>
-            {rows === undefined && <Loading />}
+            {rows === undefined && <TableSkeleton rows={6} label="Chargement des clients…" />}
             {rows !== undefined && filtered.length === 0 && (
               <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
                 Aucun client ne correspond aux filtres.

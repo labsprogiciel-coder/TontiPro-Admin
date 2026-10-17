@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { downloadCsv, errorMessage, fmt, initials, KPI, Loading, PageHeader, SearchInput } from '../components'
+import { downloadCsv, errorMessage, fmt, initials, KPI, PageHeader, PageSkeleton, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 
@@ -337,14 +337,20 @@ export default function ObjectifsPage() {
       o.deadline ? toInputDate(o.deadline) : "", statusOf(o).label]),
   )
 
-  if (data === undefined) return <Loading />
+  if (data === undefined) {
+    return (
+      <div className="objectifs-page">
+        <PageHeader crumbs={["Objectifs"]} title="Objectifs d'épargne"><Novu /></PageHeader>
+        <PageSkeleton />
+      </div>
+    )
+  }
 
   return (
     <div className="objectifs-page">
       <PageHeader
         crumbs={["Objectifs"]}
         title="Objectifs d'épargne"
-        sub={`${counts.tous} objectif${counts.tous > 1 ? "s" : ""} · ${counts.encours} en cours · ${counts.atteints} atteint${counts.atteints > 1 ? "s" : ""}`}
       >
         <Novu />
       </PageHeader>
