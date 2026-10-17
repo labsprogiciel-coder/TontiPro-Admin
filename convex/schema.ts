@@ -110,10 +110,18 @@ export default defineSchema({
     imported: v.optional(v.boolean()),
     // Agent named in the spreadsheet; agentId is the importer
     importedAgentName: v.optional(v.string()),
+    // Recorded through the partner API (channelApi.ts) rather than at a TPE;
+    // tpeId is then "API"
+    channel: v.optional(v.literal("api")),
+    // Product the movement belongs to. Set by the partner API, where one
+    // customer holds a separate balance (a "vault") per product; agents'
+    // movements leave it unset and count in the customer's overall balance.
+    productId: v.optional(v.id("products")),
   })
     .index("by_agent_date", ["agentId"]) // Convex appends _creationTime to every index
     .index("by_branch", ["branchId"])
     .index("by_customer", ["customerId"])
+    .index("by_customer_product", ["customerId", "productId"])
     .index("by_client_id", ["clientId"]),
 
   // 6. DISBURSEMENTS (Maker-Checker Workflow)
@@ -174,9 +182,24 @@ reconciliations: defineTable({
     kycLevel: v.string(),
     targets: v.array(v.string()),
     branchIds: v.array(v.id("branches")), // branches allowed to sell it
+    // Partner apps allowed to offer it through the API (apiClients.channel)
+    channels: v.optional(v.array(v.literal("nafa"))),
     updatedBy: v.id("users"),
     updatedAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_code", ["organizationId", "code"]),
+
+  // 8. PARTNER API CLIENTS (apiClients.ts, channelApi.ts)
+  // A partner app's backend calling the HTTP API with a secret key. It acts
+  // as its service staff member (`userId`, no password, no roles) in that
+  // member's branch, which holds the partner's customers.
+  apiClients: defineTable({
+    name: v.string(),
+    channel: v.literal("nafa"), // which products it may sell (products.channels)
+    keyHash: v.string(), // SHA-256 hex of the key; the key itself is never stored
+    userId: v.id("users"),
+    status: v.union(v.literal("active"), v.literal("revoked")),
+    createdAt: v.number(),
+  }).index("by_key_hash", ["keyHash"]),
 });
