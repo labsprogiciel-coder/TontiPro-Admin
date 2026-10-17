@@ -31,6 +31,18 @@ export function relTime(ts) {
 }
 
 /** French date and time, using "Aujourd'hui" / "Hier" for recent days. */
+/** A length of time in words: "12 min", "3 h", "2 j". */
+export function fmtDuration(ms) {
+  const min = Math.round(Math.abs(ms) / 60000)
+  if (min < 60) return `${min} min`
+  const h = Math.round(min / 60)
+  if (h < 48) return `${h} h`
+  return `${Math.round(h / 24)} j`
+}
+
+/** OpenStreetMap link centred on a GPS fix ({ lat, lng }). */
+export const mapUrl = (p) => `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lng}#map=17/${p.lat}/${p.lng}`
+
 export function fmtDateTime(ts) {
   if (!ts) return "—"
   const d = new Date(ts)

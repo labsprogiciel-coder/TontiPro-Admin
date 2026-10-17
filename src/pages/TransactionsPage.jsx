@@ -3,7 +3,7 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import Novu from '../components/Inbox'
-import { errorMessage, fmt, fmtDateTime, initials, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
+import { errorMessage, fmt, fmtDateTime, fmtDuration, initials, mapUrl, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 
 const PERIODS = { "24h": 1, "7j": 7, "30j": 30, "Tout": null }
@@ -12,6 +12,24 @@ const STATUS_STYLE = {
   "validée":    { cls: "actif",   label: "Validée"    },
   "en attente": { cls: "attente", label: "En attente" },
   "annulée":    { cls: "archive", label: "Annulée"    },
+}
+
+// Synced this long after it was recorded on the TPE: worth a look
+const LATE_SYNC_MS = 6 * 3600 * 1000
+
+/** When the agent recorded it on the TPE, if that differs from when the server got it. */
+function RecordedAt({ tx }) {
+  const gap = tx.timestamp - tx.recordedAt
+  if (Math.abs(gap) < 10 * 60 * 1000) return <>{fmtDateTime(tx.recordedAt)}</>
+  // The phone claims a time after the server received it: its clock is ahead
+  if (gap < 0) {
+    return <span style={{ color: "var(--neg)" }}>{fmtDateTime(tx.recordedAt)} · horloge du TPE en avance de {fmtDuration(gap)}</span>
+  }
+  return (
+    <span style={gap > LATE_SYNC_MS ? { color: "var(--neg)", fontWeight: 550 } : undefined}>
+      {fmtDateTime(tx.recordedAt)} · reçue {fmtDuration(gap)} plus tard
+    </span>
+  )
 }
 
 /** Movement detail drawer. Approve and reverse actions only show when `can` allows them. */
@@ -71,6 +89,14 @@ function TxDrawer({ tx, onClose, can }) {
               <dt>Agence</dt><dd>{tx.branch}</dd>
               <dt>Canal</dt><dd>{tx.channel}</dd>
               <dt>Terminal</dt><dd style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{tx.tpe}</dd>
+              {tx.recordedAt && <><dt>Saisie sur le TPE</dt><dd><RecordedAt tx={tx}/></dd></>}
+              {tx.location && (
+                <><dt>Position</dt><dd>
+                  <a href={mapUrl(tx.location)} target="_blank" rel="noreferrer">Voir sur la carte</a>
+                  {tx.location.accuracy !== undefined && <span className="cell-sub"> · ±{tx.location.accuracy} m</span>}
+                  {tx.location.mocked && <div style={{ color: "var(--neg)", fontWeight: 550 }}>Position simulée (faux GPS)</div>}
+                </dd></>
+              )}
               <dt>Agent</dt><dd>{tx.agent}</dd>
               <dt>Client</dt><dd>{tx.client}</dd>
               {tx.reason && <><dt>Motif annulation</dt><dd>{tx.reason}</dd></>}

@@ -2,9 +2,10 @@
 // Agents' phones register themselves (registerMine) so the dashboard can
 // offer a one-click "Lier"; only an it_admin can actually bind.
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, Infer, v } from "convex/values";
 import { mutation, MutationCtx, query } from "./_generated/server";
 import { authz } from "./authz";
+import { geoFix } from "./schema";
 import { assignedDevice, requireUser } from "./users";
 
 /**
@@ -165,5 +166,94 @@ export const myDevice = query({
     if (!(await getAuthUserId(ctx))) return null;
     const user = await requireUser(ctx);
     return assignedDevice(ctx, user._id);
+  },
+});
+
+/**
+ * A GPS fix from the app, or undefined when it isn't a real position
+ * (out-of-range or non-finite coordinates). Accuracy is kept to a sane range.
+ */
+export function cleanFix(fix: Infer<typeof geoFix> | undefined) {
+  if (!fix) return undefined;
+  const { lat, lng } = fix;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return undefined;
+  }
+  const accuracy =
+    fix.accuracy !== undefined && Number.isFinite(fix.accuracy)
+      ? Math.min(100_000, Math.max(0, Math.round(fix.accuracy)))
+      : undefined;
+  const at = fix.at !== undefined && Number.isFinite(fix.at) ? fix.at : undefined;
+  return { lat, lng, accuracy, mocked: fix.mocked === true ? true : undefined, at };
+}
+
+const YEAR_MS = 365 * 24 * 3600 * 1000;
+
+const short = (max: number) => (s: string | undefined) =>
+  s === undefined ? undefined : s.trim().slice(0, max) || undefined;
+
+/**
+ * Check-in from the agent's phone (every ~15 min while the app is open):
+ * stamps lastSync and stores what the phone reports. Only the agent the
+ * device is bound to can report for it; anything else is ignored, so a
+ * phone that was unbound meanwhile doesn't error in a loop.
+ */
+export const heartbeat = mutation({
+  args: {
+    serialNumber: v.string(),
+    appVersion: v.optional(v.string()),
+    updateId: v.optional(v.string()),
+    osVersion: v.optional(v.string()),
+    battery: v.optional(v.number()),
+    charging: v.optional(v.boolean()),
+    network: v.optional(v.union(v.literal("wifi"), v.literal("cellular"), v.literal("none"), v.literal("other"))),
+    pendingOps: v.optional(v.number()),
+    // Phone clock (Date.now()) when it sent the check-in
+    clientTime: v.optional(v.number()),
+    rooted: v.optional(v.boolean()),
+    emulator: v.optional(v.boolean()),
+    locationDenied: v.optional(v.boolean()),
+    location: v.optional(geoFix),
+  },
+  handler: async (ctx, { serialNumber, ...report }) => {
+    const user = await requireUser(ctx);
+    const device = await ctx.db
+      .query("devices")
+      .withIndex("by_serial", (q) => q.eq("serialNumber", serialNumber.trim().toUpperCase()))
+      .unique();
+    if (!device || device.assignedTo !== user._id) return "ignored" as const;
+
+    const battery =
+      report.battery !== undefined && Number.isFinite(report.battery)
+        ? Math.min(1, Math.max(0, report.battery))
+        : undefined;
+    const pendingOps =
+      report.pendingOps !== undefined && Number.isFinite(report.pendingOps)
+        ? Math.min(100_000, Math.max(0, Math.round(report.pendingOps)))
+        : undefined;
+    const now = Date.now();
+    // Rounded to the second; anything past a year either way is clamped
+    const clockSkewMs =
+      report.clientTime !== undefined && Number.isFinite(report.clientTime)
+        ? Math.round(Math.min(YEAR_MS, Math.max(-YEAR_MS, report.clientTime - now)) / 1000) * 1000
+        : undefined;
+    await ctx.db.patch(device._id, {
+      lastSync: now,
+      telemetry: {
+        appVersion: short(40)(report.appVersion),
+        updateId: short(64)(report.updateId),
+        osVersion: short(40)(report.osVersion),
+        battery,
+        charging: report.charging,
+        network: report.network,
+        pendingOps,
+        clockSkewMs,
+        rooted: report.rooted,
+        emulator: report.emulator,
+        locationDenied: report.locationDenied,
+        location: cleanFix(report.location),
+      },
+    });
+    return "ok" as const;
   },
 });

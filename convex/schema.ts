@@ -7,6 +7,16 @@ import { v } from "convex/values";
 // table is replaced by the staff table below, which auth links to by email.
 const { users: _authUsers, ...authOnlyTables } = authTables;
 
+// Where the phone was, as Expo Location reports it. `mocked` is Android's
+// "position simulée" flag (a fake-GPS app); `at` is when the fix was taken.
+export const geoFix = v.object({
+  lat: v.number(),
+  lng: v.number(),
+  accuracy: v.optional(v.number()), // metres
+  mocked: v.optional(v.boolean()),
+  at: v.optional(v.number()),
+});
+
 export default defineSchema({
   ...authOnlyTables,
 
@@ -78,7 +88,25 @@ export default defineSchema({
     requestedBy: v.optional(v.id("users")),
     requestedAt: v.optional(v.number()),
     status: v.union(v.literal("active"), v.literal("maintenance"), v.literal("lost")),
-    lastSync: v.number(),
+    lastSync: v.number(), // last time the phone checked in (devices:heartbeat)
+    // What the phone reported at its last check-in
+    telemetry: v.optional(v.object({
+      appVersion: v.optional(v.string()), // e.g. "1.0.0 (42)"
+      updateId: v.optional(v.string()), // EAS Update running on top of the build
+      osVersion: v.optional(v.string()),
+      battery: v.optional(v.number()), // 0..1
+      charging: v.optional(v.boolean()),
+      network: v.optional(v.union(v.literal("wifi"), v.literal("cellular"), v.literal("none"), v.literal("other"))),
+      pendingOps: v.optional(v.number()), // operations recorded offline, not yet on the server
+      // Phone clock minus server clock at the check-in, in ms: a phone set
+      // back in time can back-date what it records offline
+      clockSkewMs: v.optional(v.number()),
+      rooted: v.optional(v.boolean()), // expo-device's root / jailbreak guess
+      emulator: v.optional(v.boolean()),
+      // Location permission refused: transactions then carry no position
+      locationDenied: v.optional(v.boolean()),
+      location: v.optional(geoFix),
+    })),
   })
     .index("by_serial", ["serialNumber"])
     .index("by_assignee", ["assignedTo"])
@@ -117,6 +145,11 @@ export default defineSchema({
     // customer holds a separate balance (a "vault") per product; agents'
     // movements leave it unset and count in the customer's overall balance.
     productId: v.optional(v.id("products")),
+    // When the agent recorded it on the TPE (phone clock). Differs from
+    // `timestamp` (server time) when it was queued offline and synced later.
+    recordedAt: v.optional(v.number()),
+    // Where the TPE was when the agent recorded it
+    location: v.optional(geoFix),
   })
     .index("by_agent_date", ["agentId"]) // Convex appends _creationTime to every index
     .index("by_branch", ["branchId"])

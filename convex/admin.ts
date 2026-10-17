@@ -165,6 +165,8 @@ function movementRows(data: Ledger) {
     status: t.status === "completed" ? "validée" : "annulée",
     reason: t.reversalReason ?? null,
     reversedBy: t.reversedBy ? users.get(t.reversedBy)?.fullName ?? null : null,
+    recordedAt: t.recordedAt ?? null,
+    location: t.location ?? null,
   }));
 
   const payouts = data.disbursements.map((d) => ({
@@ -189,6 +191,8 @@ function movementRows(data: Ledger) {
           : "validée",
     reason: null,
     reversedBy: null,
+    recordedAt: null,
+    location: null,
   }));
 
   return [...collections, ...payouts].sort((a, b) => b.timestamp - a.timestamp);
@@ -339,6 +343,7 @@ export const listAgents = query({
             model: device.model,
             status: device.status,
             lastSync: device.lastSync,
+            telemetry: device.telemetry ?? null,
           },
         };
       }),
@@ -371,6 +376,8 @@ export const listDevices = query({
       model: d.model,
       status: d.status,
       lastSync: d.lastSync,
+      // Last check-in report from the phone (devices:heartbeat), if any
+      telemetry: d.telemetry ?? null,
       assignedTo: d.assignedTo ?? null,
       assignee: d.assignedTo ? usersById.get(d.assignedTo)?.fullName ?? "—" : null,
       boundBy: d.boundBy ? usersById.get(d.boundBy)?.fullName ?? "—" : null,

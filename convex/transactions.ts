@@ -1,9 +1,11 @@
 // convex/transactions.ts
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, Infer, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { authz } from "./authz";
+import { cleanFix } from "./devices";
+import { geoFix } from "./schema";
 import { assignedDevice, requireUser } from "./users";
 
 export const MAX_AMOUNT = 100_000_000; // sanity cap, in the branch currency
@@ -39,6 +41,10 @@ const movementArgs = {
   customerId: v.id("customers"),
   amount: v.number(),
   clientId: v.string(),
+  // When and where the agent recorded it on the TPE (stored as reported,
+  // for the audit: the server's own `timestamp` stays authoritative)
+  recordedAt: v.optional(v.number()),
+  location: v.optional(geoFix),
 };
 
 /**
@@ -51,7 +57,14 @@ const movementArgs = {
 async function recordMovement(
   ctx: MutationCtx,
   type: "deposit" | "withdrawal",
-  args: { customerId: Id<"customers">; amount: number; clientId: string; offline?: boolean },
+  args: {
+    customerId: Id<"customers">;
+    amount: number;
+    clientId: string;
+    offline?: boolean;
+    recordedAt?: number;
+    location?: Infer<typeof geoFix>;
+  },
 ) {
   const agent = await requireUser(ctx);
   const permission = type === "deposit" ? "transactions:collect" : "transactions:withdraw";
@@ -109,6 +122,9 @@ async function recordMovement(
 
   const branch = await ctx.db.get(agent.branchId);
   const organization = branch ? await ctx.db.get(branch.organizationId) : null;
+  const recordedAt =
+    args.recordedAt !== undefined && Number.isFinite(args.recordedAt) ? args.recordedAt : undefined;
+  const location = cleanFix(args.location);
   return await ctx.db.insert("transactions", {
     type,
     amount: args.amount,
@@ -122,6 +138,8 @@ async function recordMovement(
     clientId,
     ...(offline ? { offline: true } : {}),
     ...(overdraft ? { overdraft: true } : {}),
+    ...(recordedAt !== undefined ? { recordedAt } : {}),
+    ...(location ? { location } : {}),
   });
 }
 

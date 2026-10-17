@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { errorMessage, fmt, initials, relTime, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
+import { errorMessage, fmt, fmtDuration, initials, mapUrl, relTime, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 import { NewStaffDrawer, StaffDrawer } from '../components/StaffDrawers'
@@ -20,14 +20,88 @@ const STATUS_DOT = {
 }
 const STATUS_LABEL = { active: "actif", suspended: "suspendu" }
 
-const DEVICE_STALE_MS = 60 * 60 * 1000
+// Phones check in every ~15 min while the app is open (devices:heartbeat);
+// two missed check-ins and the TPE counts as offline.
+const DEVICE_STALE_MS = 35 * 60 * 1000
 
-/** Device health tag: maintenance, lost, stale sync (over an hour) or up to date. */
+// Phone clock this far from the server's: what it records offline is mis-dated
+const CLOCK_SKEW_ALERT_MS = 5 * 60 * 1000
+// Silent this long while holding unsynced operations: cash collected but not on the server
+const HELD_OPS_ALERT_MS = 4 * 3600 * 1000
+
+/** Signs of tampering or held cash from the last check-in, most serious first. */
+function deviceAlerts(d) {
+  const t = d.telemetry
+  if (!t || d.status !== "active") return []
+  const out = []
+  if (t.location?.mocked) out.push({ label: "Position simulée", title: "Une application de faux GPS est active sur le téléphone" })
+  if (t.rooted) out.push({ label: "Téléphone modifié", title: "Téléphone rooté : l'application et ses données peuvent être altérées" })
+  if (t.emulator) out.push({ label: "Émulateur", title: "L'application tourne sur un émulateur, pas sur un vrai téléphone" })
+  if (t.clockSkewMs !== undefined && Math.abs(t.clockSkewMs) > CLOCK_SKEW_ALERT_MS) {
+    out.push({
+      label: `Horloge ${t.clockSkewMs < 0 ? "en retard" : "en avance"} de ${fmtDuration(t.clockSkewMs)}`,
+      title: "L'heure du téléphone ne correspond pas à celle du serveur : les opérations hors ligne peuvent être mal datées",
+    })
+  }
+  const silent = Date.now() - d.lastSync
+  if (t.pendingOps > 0 && silent > HELD_OPS_ALERT_MS) {
+    out.push({
+      label: `${t.pendingOps} non synchronisée${t.pendingOps > 1 ? "s" : ""} depuis ${fmtDuration(silent)}`,
+      title: "Opérations encaissées sur le TPE mais pas encore reçues par le serveur",
+    })
+  }
+  if (t.locationDenied) out.push({ label: "Localisation refusée", title: "Les opérations de ce TPE ne sont pas géolocalisées" })
+  return out
+}
+
+/** The device's alerts as tags, or a dash. */
+function AlertsCell({ d }) {
+  const alerts = deviceAlerts(d)
+  if (alerts.length === 0) return <span className="cell-sub">—</span>
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+      {alerts.map(a => <span key={a.label} className="tag alerte" title={a.title}>{a.label}</span>)}
+    </div>
+  )
+}
+
+const NETWORK_LABELS = { wifi: "Wi-Fi", cellular: "Données mobiles", none: "Hors réseau", other: "Réseau" }
+
+/** Device health tag: maintenance, lost, offline (no recent check-in) or online. */
 function SyncTag({ d }) {
   if (d.status === "maintenance") return <span className="tag attente">Maintenance</span>
   if (d.status === "lost")        return <span className="tag archive">Perdu</span>
-  if (Date.now() - d.lastSync > DEVICE_STALE_MS) return <span className="tag attente">Sync ancienne</span>
-  return <span className="tag actif">À jour</span>
+  if (Date.now() - d.lastSync > DEVICE_STALE_MS) return <span className="tag attente">Hors ligne</span>
+  return <span className="tag actif">En ligne</span>
+}
+
+/** What the phone reported at its last check-in: battery, network, unsynced operations, app version. */
+function PhoneCell({ t }) {
+  if (!t) return <span className="cell-sub">Pas encore de rapport</span>
+  const pct = t.battery !== undefined ? Math.round(t.battery * 100) : null
+  const low = pct !== null && pct <= 20 && !t.charging
+  return (
+    <div style={{ lineHeight: 1.35 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12.5 }}>
+        {pct !== null && (
+          <span style={{ color: low ? "var(--neg)" : "var(--ink)", fontWeight: low ? 600 : 500, fontVariantNumeric: "tabular-nums" }}
+                title={t.charging ? "En charge" : "Sur batterie"}>
+            {t.charging ? "⚡" : "🔋"} {pct}%
+          </span>
+        )}
+        {t.network && <span style={{ color: t.network === "none" ? "var(--neg)" : "var(--ink-2)" }}>{NETWORK_LABELS[t.network]}</span>}
+        {t.pendingOps > 0 && (
+          <span style={{ color: "var(--warn)", fontWeight: 600 }} title="Opérations enregistrées sur le téléphone, pas encore reçues par le serveur">
+            {t.pendingOps} en attente
+          </span>
+        )}
+      </div>
+      <div className="cell-sub">
+        {[t.appVersion && `App ${t.appVersion}`, t.osVersion && `Android ${t.osVersion}`].filter(Boolean).join(" · ") || "—"}
+        {t.location && <> · <a href={mapUrl(t.location)} target="_blank" rel="noreferrer">Position</a></>}
+      </div>
+    </div>
+  )
 }
 
 /** Render TPE assignment controls and audit details; mutations enforce devices:bind permission. */
@@ -111,6 +185,13 @@ export default function AgentsPage() {
   const [role, setRole] = useState("tous")
   const [creating, setCreating] = useState(false)
   const [staffId, setStaffId]   = useState(null)
+  // Re-render every minute: online/offline and the alerts depend on the time
+  // since the last check-in, which moves even when the data doesn't
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setTick(n => n + 1), 60_000)
+    return () => clearInterval(timer)
+  }, [])
   const me  = useQuery(api.users.me)
   const can = me?.can ?? {}
 
@@ -132,8 +213,11 @@ export default function AgentsPage() {
   // Phones waiting for a binding first, oldest request first
   const pendingTpe  = fleet.filter(d => d.requestedBy).length
   const staffPage = usePaged(filtered)
+  const alertedTpe  = fleet.filter(d => deviceAlerts(d).length > 0).length
+  // Binding requests first (oldest first), then devices with alerts
   const sortedFleet = [...fleet].sort((a, b) =>
-    (a.requestedBy ? 0 : 1) - (b.requestedBy ? 0 : 1) || (a.requestedAt ?? 0) - (b.requestedAt ?? 0))
+    (a.requestedBy ? 0 : 1) - (b.requestedBy ? 0 : 1) || (a.requestedAt ?? 0) - (b.requestedAt ?? 0) ||
+    deviceAlerts(b).length - deviceAlerts(a).length)
   const fleetPage = usePaged(sortedFleet)
   const activeTpe  = fleet.filter(d => d.status === "active").length
   const staleTpe   = fleet.filter(d => d.status === "active" && Date.now() - d.lastSync > DEVICE_STALE_MS).length
@@ -141,7 +225,7 @@ export default function AgentsPage() {
   const txMonth    = AGENTS.reduce((s, a) => s + a.txMonth, 0)
   const collectors = AGENTS.filter(a => a.txMonth > 0)
   const AGENT_KPIS = [
-    { label: "TPE en service",    value: String(activeTpe), unit: `/${fleet.length}`, note: `${fleet.length - activeTpe} hors service · ${staleTpe} sync ancienne`, icon: "users" },
+    { label: "TPE en service",    value: String(activeTpe), unit: `/${fleet.length}`, note: `${fleet.length - activeTpe} hors service · ${staleTpe} hors ligne`, icon: "users" },
     { label: "Collecte du mois",  value: fmt(collected),    unit: "FCFA", note: `${txMonth} transactions`, icon: "wallet" },
     { label: "Agents actifs",     value: String(AGENTS.filter(a => a.status === "active").length), unit: `/${AGENTS.length}`, note: `${branches.length - 1} agences`, icon: "cloud" },
     { label: "Tx / agent · moy.", value: String(collectors.length ? Math.round(txMonth / collectors.length) : 0), unit: "", note: "ce mois, agents collecteurs", icon: "receipt" },
@@ -353,12 +437,13 @@ export default function AgentsPage() {
         <div className="card-head">
           <div className="card-title">Parc de terminaux</div>
           {pendingTpe > 0 && <span className="tag attente" style={{ marginLeft: 10 }}>{pendingTpe} demande{pendingTpe > 1 ? "s" : ""} de liaison</span>}
+          {alertedTpe > 0 && <span className="tag alerte" style={{ marginLeft: 10 }}>{alertedTpe} TPE en alerte</span>}
           <span className="card-sub" style={{ marginLeft: "auto" }}>{fleet.length} TPE enregistrés · liaison réservée à l'Admin IT</span>
         </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Dernière sync</th></tr>
+              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Téléphone</th><th>Alertes</th><th>Dernière activité</th></tr>
             </thead>
             <tbody>
               {fleetPage.rows.map(d => (
@@ -367,6 +452,8 @@ export default function AgentsPage() {
                   <td>{d.model}</td>
                   <td><BindCell device={d} agents={AGENTS} canBind={!!can.bind}/></td>
                   <td><SyncTag d={d}/></td>
+                  <td><PhoneCell t={d.telemetry}/></td>
+                  <td><AlertsCell d={d}/></td>
                   <td className="cell-sub">{relTime(d.lastSync)}</td>
                 </tr>
               ))}
