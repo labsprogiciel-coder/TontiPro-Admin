@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
@@ -185,6 +185,13 @@ export default function AgentsPage() {
   const [role, setRole] = useState("tous")
   const [creating, setCreating] = useState(false)
   const [staffId, setStaffId]   = useState(null)
+  // Re-render every minute: online/offline and the alerts depend on the time
+  // since the last check-in, which moves even when the data doesn't
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setTick(n => n + 1), 60_000)
+    return () => clearInterval(timer)
+  }, [])
   const me  = useQuery(api.users.me)
   const can = me?.can ?? {}
 
