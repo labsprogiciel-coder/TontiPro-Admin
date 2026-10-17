@@ -11,7 +11,7 @@
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
-import { ApiCaller, requireApiClient } from "./apiClients";
+import { ApiCaller, publicPartner, requireApiClient } from "./apiClients";
 import { cleanIdNumber, cleanName, cleanPhone } from "./customers";
 import { customerBalance, isWithdrawal, MAX_AMOUNT, signedAmount } from "./transactions";
 
@@ -108,22 +108,32 @@ async function assertDayOpen(ctx: QueryCtx, userId: Id<"users">, ms: number) {
 }
 
 /** Active savings products the partner may offer, sorted by name. */
+async function offeredCatalogue(ctx: QueryCtx, caller: ApiCaller) {
+  const products = await ctx.db
+    .query("products")
+    .withIndex("by_organization", (q) => q.eq("organizationId", caller.organization._id))
+    .collect();
+  return {
+    currency: caller.organization.currency,
+    products: products
+      .filter((p) => offered(caller, p))
+      .sort((a, b) => a.name.localeCompare(b.name, "fr"))
+      .map(publicProduct),
+  };
+}
+
 export const catalogue = internalQuery({
   args: { keyHash: v.string() },
-  handler: async (ctx, args) => {
-    const caller = await requireApiClient(ctx, args.keyHash);
-    const products = await ctx.db
-      .query("products")
-      .withIndex("by_organization", (q) => q.eq("organizationId", caller.organization._id))
-      .collect();
-    return {
-      currency: caller.organization.currency,
-      products: products
-        .filter((p) => offered(caller, p))
-        .sort((a, b) => a.name.localeCompare(b.name, "fr"))
-        .map(publicProduct),
-    };
-  },
+  handler: async (ctx, args) => offeredCatalogue(ctx, await requireApiClient(ctx, args.keyHash)),
+});
+
+/**
+ * The same catalogue without a key, for the partner's app to show its offer:
+ * only public terms, as on a brochure.
+ */
+export const publicCatalogue = internalQuery({
+  args: { partnerId: v.string() },
+  handler: async (ctx, args) => offeredCatalogue(ctx, await publicPartner(ctx, args.partnerId)),
 });
 
 /**

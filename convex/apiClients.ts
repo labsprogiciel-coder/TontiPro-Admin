@@ -160,6 +160,24 @@ export async function requireApiClient(ctx: QueryCtx, keyHash: string): Promise<
     .query("apiClients")
     .withIndex("by_key_hash", (q) => q.eq("keyHash", keyHash))
     .unique();
+  return activeCaller(ctx, client);
+}
+
+/**
+ * The partner with this ID, for its public catalogue, which needs no key: the
+ * ID isn't a secret. PARTNER_NOT_FOUND unless it could call the API itself.
+ */
+export async function publicPartner(ctx: QueryCtx, partnerId: string): Promise<ApiCaller> {
+  const id = ctx.db.normalizeId("apiClients", partnerId);
+  try {
+    return await activeCaller(ctx, id ? await ctx.db.get(id) : null);
+  } catch {
+    throw new ConvexError("PARTNER_NOT_FOUND");
+  }
+}
+
+/** The caller for an active partner, or UNAUTHORIZED. */
+async function activeCaller(ctx: QueryCtx, client: Doc<"apiClients"> | null): Promise<ApiCaller> {
   if (!client || client.status !== "active") throw new ConvexError("UNAUTHORIZED");
   const user = await ctx.db.get(client.userId);
   if (!user || user.status !== "active") throw new ConvexError("UNAUTHORIZED");
@@ -168,3 +186,63 @@ export async function requireApiClient(ctx: QueryCtx, keyHash: string): Promise<
   if (!branch || !organization || organization.status !== "active") throw new ConvexError("UNAUTHORIZED");
   return { client, user, branch, organization };
 }
+
+/**
+ * Demo terms for Nafa's themes (one product each, plus NAFA-LIBRE for vaults
+ * made without a theme). The app reads the lock from the durations: none
+ * (0 / 0) = libre, min = max = fixe, min < max = bloque. Rates and amounts are
+ * examples, to replace with the institution's approved products.
+ */
+const NAFA_DEMO_PRODUCTS = [
+  { code: "NAFA-LIBRE", name: "Nafa Libre", rate: 3, durationMin: 0, durationMax: 0, minDeposit: 1_000 },
+  { code: "NAFA-URGENCES", name: "Nafa Urgences", rate: 3, durationMin: 0, durationMax: 0, minDeposit: 1_000 },
+  { code: "NAFA-VOYAGE", name: "Nafa Voyage", rate: 3, durationMin: 0, durationMax: 0, minDeposit: 1_000 },
+  { code: "NAFA-MAISON", name: "Nafa Maison", rate: 6, durationMin: 12, durationMax: 36, minDeposit: 5_000 },
+  { code: "NAFA-RESERVE", name: "Nafa Réserve", rate: 4.5, durationMin: 6, durationMax: 6, minDeposit: 5_000 },
+  { code: "NAFA-BUSINESS", name: "Nafa Business", rate: 4.5, durationMin: 6, durationMax: 6, minDeposit: 5_000 },
+  { code: "NAFA-RENTREE", name: "Nafa Rentrée", rate: 5, durationMin: 6, durationMax: 12, minDeposit: 2_000 },
+  { code: "NAFA-EVENEMENT", name: "Nafa Événement", rate: 5, durationMin: 9, durationMax: 9, minDeposit: 5_000 },
+  { code: "NAFA-MOTO", name: "Nafa Moto", rate: 6, durationMin: 12, durationMax: 24, minDeposit: 5_000 },
+];
+
+/**
+ * Create or update the demo products and offer them to a partner (its
+ * channel and branch), for a dev or preview deployment:
+ *   npx convex run apiClients:seedDemoCatalogue '{"apiClientId":"…"}'
+ */
+export const seedDemoCatalogue = internalMutation({
+  args: { apiClientId: v.id("apiClients") },
+  handler: async (ctx, args) => {
+    const client = await ctx.db.get(args.apiClientId);
+    const user = client && (await ctx.db.get(client.userId));
+    const branch = user && (await ctx.db.get(user.branchId));
+    if (!client || !user || !branch) throw new ConvexError("NOT_FOUND");
+    const codes = [];
+    for (const p of NAFA_DEMO_PRODUCTS) {
+      const existing = await ctx.db
+        .query("products")
+        .withIndex("by_organization_code", (q) => q.eq("organizationId", branch.organizationId).eq("code", p.code))
+        .first();
+      const doc = {
+        ...p,
+        family: "epargne" as const,
+        summary: "Produit de démonstration pour Nafa.",
+        status: "actif" as const,
+        maxBalance: 0,
+        fees: 0,
+        feesUnit: "FCFA" as const,
+        grace: 0,
+        kycLevel: "Standard",
+        targets: ["Particuliers"],
+        branchIds: [...new Set([...(existing?.branchIds ?? []), branch._id])],
+        channels: [...new Set([...(existing?.channels ?? []), client.channel])],
+        updatedBy: user._id,
+        updatedAt: Date.now(),
+      };
+      if (existing) await ctx.db.patch(existing._id, doc);
+      else await ctx.db.insert("products", { organizationId: branch.organizationId, ...doc });
+      codes.push(p.code);
+    }
+    return codes;
+  },
+});

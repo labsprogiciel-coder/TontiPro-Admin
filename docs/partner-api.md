@@ -31,6 +31,21 @@ npx convex run apiClients:revoke '{"apiClientId":"…"}'   # cut the partner off
 
 Suspending the service staff member on the dashboard also cuts it off.
 
+For a dev or preview deployment, give the partner demo products (one per Nafa
+theme, plus `NAFA-LIBRE`; re-running updates them):
+
+```bash
+npx convex run apiClients:seedDemoCatalogue '{"apiClientId":"…"}'
+```
+
+## Public catalogue (no key)
+
+`GET /api/v1/public/catalogue?partner=<apiClientId>` returns the same body as
+`GET /api/v1/catalogue` with no key, so the partner's app can show its offer
+directly. The partner ID isn't a secret. Any origin may read it (CORS `*`),
+and it may be cached for 5 minutes. `404 PARTNER_NOT_FOUND` for an unknown or
+revoked partner.
+
 ## Calls
 
 Base URL: the deployment's `.convex.site` address. Every call sends
