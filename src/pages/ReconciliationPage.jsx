@@ -4,6 +4,7 @@ import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { errorMessage, fmt, initials, PageHeader, PageSkeleton } from '../components'
 import { Pager, usePaged } from '../components/Pager'
+import LedgerCard from '../components/LedgerCard'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -219,6 +220,8 @@ function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
           </div>
         ))}
       </section>
+
+      <LedgerCard />
 
       {openSessions.map(o => (
         <div className="recon-banner" key={o.id}>

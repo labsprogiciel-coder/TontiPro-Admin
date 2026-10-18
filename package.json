@@ -12,6 +12,7 @@
     "@auth/core": "0.41.3",
     "@convex-dev/auth": "0.0.96",
     "@djpanda/convex-authz": "^2.3.1",
+    "@formance/formance-sdk": "7.0.1",
     "@novu/react": "^3.16.0",
     "@sentry/react": "^11.8.0",
     "convex": "^1.37.0",
