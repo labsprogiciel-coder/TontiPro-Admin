@@ -134,14 +134,18 @@ function FleetRow({ device, agents, canBind }) {
 
   // Mirrors bindDevice: active field agents / supervisors without a terminal
   const eligible = agents.filter(a => a.status === "active" && a.canCollect && !a.device)
-  // The agent whose phone registered this serial, if they can still be bound
-  const requester = canBind && device.requestedBy ? eligible.find(a => a.id === device.requestedBy) : null
+  // A phone registered this serial and waits for a binding (shown whatever
+  // the requester's state); `requester` is set only when they can be bound
+  const pending = !device.assignedTo && !!device.requestedBy
+  const requester = canBind && pending && device.status === "active"
+    ? eligible.find(a => a.id === device.requestedBy) ?? null
+    : null
 
   let assignee
   if (device.assignedTo) assignee = <span style={{ fontWeight: 550 }}>{device.assignee}</span>
-  else if (requester) assignee = <span className="tag attente">Demande de liaison · {requester.name}</span>
+  else if (pending) assignee = <span className="tag attente">Demande de liaison · {device.requester ?? "agent inconnu"}</span>
   else if (device.status !== "active") assignee = <span className="cell-sub">Non affecté · appareil indisponible</span>
-  else assignee = <span className="cell-sub">{!canBind && device.requester ? `Non affecté · demandé par ${device.requester}` : "Non affecté"}</span>
+  else assignee = <span className="cell-sub">Non affecté</span>
 
   let actions = null
   if (canBind) {
@@ -171,12 +175,16 @@ function FleetRow({ device, agents, canBind }) {
       <td>{device.model}</td>
       <td>
         {assignee}
-        {requester && (
+        {pending && (
           <div className="cell-sub" style={{ marginTop: 2 }}>
-            Téléphone enregistré {relTime(device.requestedAt)} · vérifiez que le numéro affiché sur son écran est le même
+            {device.status !== "active"
+              ? "Appareil indisponible : remettez-le en service avant de le lier"
+              : canBind && !requester
+                ? "Cet agent ne peut pas être lié (suspendu, sans droit d'encaissement ou déjà équipé)"
+                : `Téléphone enregistré ${relTime(device.requestedAt)} · vérifiez que le numéro affiché sur son écran est le même`}
           </div>
         )}
-        {canBind && device.boundBy && !requester && (
+        {canBind && device.boundBy && !pending && (
           <div className="cell-sub" style={{ marginTop: 2 }}>
             {device.assignedTo ? "Lié" : "Délié"} par {device.boundBy} · {relTime(device.boundAt)}
           </div>

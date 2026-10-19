@@ -4,7 +4,7 @@ import { query, QueryCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { authz } from "./authz";
 import { isWithdrawal, signedAmount } from "./transactions";
-import { assignedDevice, requireUser } from "./users";
+import { requireUser } from "./users";
 
 const DAY = 86_400_000;
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
@@ -243,31 +243,31 @@ export const dashboard = query({
     const fieldDeposits = deposits.filter(
       (t) => t.timestamp >= monthStart && !t.imported && t.channel !== "api",
     );
-    const byAgent = new Map<Id<"users">, { collected: number; txCount: number }>();
+    const byAgent = new Map<Id<"users">, { collected: number; txCount: number; serials: Set<string> }>();
     for (const t of fieldDeposits) {
-      const a = byAgent.get(t.agentId) ?? { collected: 0, txCount: 0 };
+      const a = byAgent.get(t.agentId) ?? { collected: 0, txCount: 0, serials: new Set<string>() };
       a.collected += t.amount;
       a.txCount += 1;
+      // The TPEs that recorded them, even if the agent has changed TPE since
+      a.serials.add(t.tpeId);
       byAgent.set(t.agentId, a);
     }
     const users = byId(data.users);
     const branches = byId(data.branches);
-    const topCollectors = await Promise.all(
-      [...byAgent.entries()]
-        .sort((a, b) => b[1].collected - a[1].collected)
-        .slice(0, 4)
-        .map(async ([agentId, a]) => {
-          const user = users.get(agentId);
-          const device = await assignedDevice(ctx, agentId);
-          return {
-            id: agentId as string,
-            name: user?.fullName ?? "—",
-            branch: (user && branches.get(user.branchId)?.name) ?? "—",
-            serial: device?.serialNumber ?? null,
-            ...a,
-          };
-        }),
-    );
+    const topCollectors = [...byAgent.entries()]
+      .sort((a, b) => b[1].collected - a[1].collected)
+      .slice(0, 4)
+      .map(([agentId, a]) => {
+        const user = users.get(agentId);
+        return {
+          id: agentId as string,
+          name: user?.fullName ?? "—",
+          branch: (user && branches.get(user.branchId)?.name) ?? "—",
+          serials: [...a.serials].sort(),
+          collected: a.collected,
+          txCount: a.txCount,
+        };
+      });
 
     return {
       kpis: {

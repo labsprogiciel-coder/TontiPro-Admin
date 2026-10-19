@@ -20,7 +20,7 @@ export default function TopCollectorsCard({ collectors, total }) {
               <div className="avatar sm">{initials(a.name)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 550, fontSize: 13 }}>{a.name}</div>
-                <div className="cell-sub" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>{a.serial ?? "—"} · {a.branch}</div>
+                <div className="cell-sub" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>{a.serials.join(", ") || "—"} · {a.branch}</div>
                 <div className="goal-bar" style={{ marginTop: 4 }}>
                   <div className="goal-fill" style={{ width: Math.min(100, pct) + "%" }}/>
                 </div>
