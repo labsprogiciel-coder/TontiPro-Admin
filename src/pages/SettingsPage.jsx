@@ -3,6 +3,7 @@ import { I } from '../icons'
 import { MizoMark } from '../components/Brand'
 import { PageHeader } from '../components'
 import Novu from '../components/Inbox'
+import PermissionsMatrix from '../components/PermissionsMatrix'
 
 
 /** Settings section card with title and optional subtitle. */
@@ -56,6 +57,7 @@ export default function SettingsPage() {
     { k: "agence",        label: "Agence",       icon: <I.Pin/> },
     { k: "tpe",           label: "Terminaux TPE", icon: <I.Wifi/> },
     { k: "securite",      label: "Sécurité",      icon: <I.Shield/> },
+    { k: "roles",         label: "Rôles & permissions", icon: <I.Users/> },
     { k: "notifications", label: "Notifications", icon: <I.Bell/> },
     { k: "facturation",   label: "Facturation",   icon: <I.Wallet/> },
     { k: "integrations",  label: "Intégrations",  icon: <I.Cloud/> },
@@ -193,6 +195,12 @@ export default function SettingsPage() {
                 <Toggle label="Exporter automatiquement vers le coffre" sub="Sauvegarde chiffrée chaque dimanche à 02:00." value={true} onChange={() => {}}/>
               </SetCard>
             </>
+          )}
+
+          {section === "roles" && (
+            <SetCard title="Permissions · matrice" sub="Ce que chaque rôle peut faire. Les rôles s'attribuent depuis Agents & TPE.">
+              <PermissionsMatrix />
+            </SetCard>
           )}
 
           {section === "notifications" && (

@@ -5,8 +5,9 @@ import {
   VolumeChart, QuickActionsCard, KpiSkeleton, LoadingStatus, Skel, fmt,
 } from '../components'
 import Novu from '../components/Inbox'
+import TopCollectorsCard from '../components/TopCollectorsCard'
 
-/** Back-office dashboard: KPIs, volume chart, quick actions, recent clients and movements. */
+/** Back-office dashboard: KPIs, volume chart, quick actions, recent clients and movements, top collectors. */
 export default function DashboardPage() {
   const data = useQuery(api.admin.dashboard)
 
@@ -36,6 +37,9 @@ export default function DashboardPage() {
             <ClientsCard clients={data.clients} />
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <TransactionsCard tx={data.recent} />
+              {data.topCollectors.length > 0 && (
+                <TopCollectorsCard collectors={data.topCollectors} total={data.collectedMonth} />
+              )}
             </div>
           </div>
         </>

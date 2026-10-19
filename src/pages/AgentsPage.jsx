@@ -185,6 +185,7 @@ export default function AgentsPage() {
   const [role, setRole] = useState("tous")
   const [creating, setCreating] = useState(false)
   const [staffId, setStaffId]   = useState(null)
+  const [tab, setTab]           = useState("agents")
   // Re-render every minute: online/offline and the alerts depend on the time
   // since the last check-in, which moves even when the data doesn't
   const [, setTick] = useState(0)
@@ -215,7 +216,11 @@ export default function AgentsPage() {
   const staffPage = usePaged(filtered)
   const alertedTpe  = fleet.filter(d => deviceAlerts(d).length > 0).length
   // Binding requests first (oldest first), then devices with alerts
-  const sortedFleet = [...fleet].sort((a, b) =>
+  const needle = q.trim().toLowerCase()
+  const shownFleet = needle
+    ? fleet.filter(d => [d.serial, d.model, d.assignee].some(x => (x ?? "").toLowerCase().includes(needle)))
+    : fleet
+  const sortedFleet = [...shownFleet].sort((a, b) =>
     (a.requestedBy ? 0 : 1) - (b.requestedBy ? 0 : 1) || (a.requestedAt ?? 0) - (b.requestedAt ?? 0) ||
     deviceAlerts(b).length - deviceAlerts(a).length)
   const fleetPage = usePaged(sortedFleet)
@@ -264,9 +269,19 @@ export default function AgentsPage() {
           ))}
         </section>
       )}
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="seg-tabs" role="tablist" aria-label="Agents ou terminaux" style={{ marginBottom: 12 }}>
+        <button role="tab" aria-selected={tab === "agents"} className={"seg-tab" + (tab === "agents" ? " on" : "")} onClick={() => setTab("agents")}>
+          Flotte d'agents <span className="seg-count">{AGENTS.length}</span>
+        </button>
+        <button role="tab" aria-selected={tab === "tpe"} className={"seg-tab" + (tab === "tpe" ? " on" : "")} onClick={() => setTab("tpe")}>
+          Parc de terminaux <span className="seg-count">{fleet.length}</span>
+          {alertedTpe > 0 && <span className="tag alerte" title="TPE en alerte">{alertedTpe} en alerte</span>}
+        </button>
+      </div>
+
+      {tab === "agents" && (
+      <div className="card" role="tabpanel">
         <div className="card-head">
-          <div className="card-title">Flotte d'agents · TPE en service</div>
           <div className="filter-spacer"/>
           <div className="filter-group">
             <label className="filter-label">Agence</label>
@@ -363,81 +378,13 @@ export default function AgentsPage() {
           <Pager paged={staffPage} unit="membres" />
         </div>
       </div>
+      )}
 
-      <div className="row cols-2 agents-row" style={{ marginBottom: 14 }}>
-        <div className="card">
-          <div className="card-head">
-            <div className="card-title">Top collecteurs · ce mois</div>
-            <span className="card-sub" style={{ marginLeft: "auto" }}>Sur le terrain</span>
-          </div>
-          <div style={{ padding: "4px 14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-            {[...AGENTS].filter(a => a.collected).sort((a,b) => b.collected - a.collected).slice(0,4).map((a, i) => {
-              const pct = collected ? Math.round((a.collected / collected) * 100) : 0
-              return (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 18, fontWeight: 600, color: "var(--ink-3)", fontVariantNumeric: "tabular-nums", fontSize: 12 }}>{i+1}</div>
-                  <div className="avatar sm">{initials(a.name)}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 550, fontSize: 13 }}>{a.name}</div>
-                    <div className="cell-sub" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>{a.device?.serial ?? "—"} · {a.branch}</div>
-                    <div className="goal-bar" style={{ marginTop: 4 }}>
-                      <div className="goal-fill" style={{ width: Math.min(100, pct) + "%" }}/>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{fmt(a.collected)}</div>
-                    <div className="cell-sub">{pct}% du total</div>
-                  </div>
-                </div>
-              )
-            })}
-            {rows && !AGENTS.some(a => a.collected) && <div className="cell-sub">Aucune collecte ce mois</div>}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-head">
-            <div className="card-title">Permissions · matrice</div>
-            <span className="card-sub" style={{ marginLeft: "auto" }}>Par rôle</span>
-          </div>
-          <div style={{ padding: "0 14px 14px", overflowX: "auto" }}>
-            <table className="perm-table">
-              <thead>
-                <tr><th></th><th>Agent</th><th>Superv.</th><th>Compta.</th><th>Admin IT</th></tr>
-              </thead>
-              <tbody>
-                {/* Mirrors the role definitions in convex/authz.ts */}
-                {[
-                  ["Encaisser (TPE)",            1,1,0,0],
-                  ["Inscrire un client",         1,1,0,0],
-                  ["Demander un décaissement",   1,1,0,0],
-                  ["Annuler une transaction",    0,1,0,0],
-                  ["Approuver un décaissement",  0,1,0,0],
-                  ["Vérifier l'identité client", 0,1,1,0],
-                  ["Clôturer la caisse",         0,0,1,0],
-                  ["Lier les TPE",               0,0,0,1],
-                  ["Gérer le personnel",         0,0,0,1],
-                ].map(([label, ...vals]) => (
-                  <tr key={label}>
-                    <td>{label}</td>
-                    {vals.map((v, i) => (
-                      <td key={i} style={{ textAlign: "center" }}>
-                        {v ? <span className="perm-yes"><I.Check size={11} stroke="white"/></span> : <span className="perm-no">—</span>}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
+      {tab === "tpe" && (
+      <div className="card" role="tabpanel">
         <div className="card-head">
-          <div className="card-title">Parc de terminaux</div>
-          {pendingTpe > 0 && <span className="tag attente" style={{ marginLeft: 10 }}>{pendingTpe} demande{pendingTpe > 1 ? "s" : ""} de liaison</span>}
-          {alertedTpe > 0 && <span className="tag alerte" style={{ marginLeft: 10 }}>{alertedTpe} TPE en alerte</span>}
+          {pendingTpe > 0 && <span className="tag attente">{pendingTpe} demande{pendingTpe > 1 ? "s" : ""} de liaison</span>}
+          {alertedTpe > 0 && <span className="tag alerte">{alertedTpe} TPE en alerte</span>}
           <span className="card-sub" style={{ marginLeft: "auto" }}>{fleet.length} TPE enregistrés · liaison réservée à l'Admin IT</span>
         </div>
         <div className="table-wrap">
@@ -463,6 +410,7 @@ export default function AgentsPage() {
           <Pager paged={fleetPage} unit="terminaux" />
         </div>
       </div>
+      )}
       {creating && (
         <NewStaffDrawer onClose={() => setCreating(false)}
           onCreated={(id) => { setCreating(false); setStaffId(id) }} />
