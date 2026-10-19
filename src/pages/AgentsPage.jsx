@@ -6,6 +6,7 @@ import { errorMessage, fmt, fmtDuration, initials, mapUrl, relTime, KpiSkeleton,
 import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 import { NewStaffDrawer, StaffDrawer } from '../components/StaffDrawers'
+import { ImportButton } from '../components/ImportDialog'
 
 const ROLE_TAGS = {
   "Admin IT":      { bg: "oklch(0.94 0.04 50)",  fg: "var(--brand-ink)" },
@@ -104,8 +105,12 @@ function PhoneCell({ t }) {
   )
 }
 
-/** Render TPE assignment controls and audit details; mutations enforce devices:bind permission. */
-function BindCell({ device, agents, canBind }) {
+/**
+ * One terminal row. Who it is assigned to (and the binding request or audit
+ * line) sits in "Affecté à"; the Lier / Délier controls sit in the last,
+ * right-aligned column. The mutations enforce devices:bind.
+ */
+function FleetRow({ device, agents, canBind }) {
   const bind   = useMutation(api.devices.bindDevice)
   const unbind = useMutation(api.devices.unbindDevice)
   const [userId, setUserId] = useState("")
@@ -129,52 +134,71 @@ function BindCell({ device, agents, canBind }) {
 
   // Mirrors bindDevice: active field agents / supervisors without a terminal
   const eligible = agents.filter(a => a.status === "active" && a.canCollect && !a.device)
-  // The agent whose phone registered this serial, if they can still be bound
-  const requester = device.requestedBy ? eligible.find(a => a.id === device.requestedBy) : null
+  // A phone registered this serial and waits for a binding (shown whatever
+  // the requester's state); `requester` is set only when they can be bound
+  const pending = !device.assignedTo && !!device.requestedBy
+  const requester = canBind && pending && device.status === "active"
+    ? eligible.find(a => a.id === device.requestedBy) ?? null
+    : null
 
-  if (!canBind) {
-    return device.assignedTo
-      ? <span style={{ fontWeight: 550 }}>{device.assignee}</span>
-      : <span className="cell-sub">{device.requester ? `Non affecté · demandé par ${device.requester}` : "Non affecté"}</span>
+  let assignee
+  if (device.assignedTo) assignee = <span style={{ fontWeight: 550 }}>{device.assignee}</span>
+  else if (pending) assignee = <span className="tag attente">Demande de liaison · {device.requester ?? "agent inconnu"}</span>
+  else if (device.status !== "active") assignee = <span className="cell-sub">Non affecté · appareil indisponible</span>
+  else assignee = <span className="cell-sub">Non affecté</span>
+
+  let actions = null
+  if (canBind) {
+    if (device.assignedTo) {
+      actions = <button className="btn sm" style={{ color: "var(--neg)" }} disabled={busy} onClick={onUnbind}>Délier</button>
+    } else if (requester) {
+      actions = (
+        <button className="btn brand sm" disabled={busy}
+          onClick={() => run(() => bind({ serialNumber: device.serial, userId: requester.id }))}>Lier à {requester.name}</button>
+      )
+    } else if (device.status === "active") {
+      actions = <>
+        <select className="filter-select" aria-label={`Agent pour ${device.serial}`} value={userId}
+          onChange={e => setUserId(e.target.value)} disabled={busy}>
+          <option value="">{eligible.length ? "Choisir un agent…" : "Aucun agent disponible"}</option>
+          {eligible.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+        <button className="btn sm" disabled={busy || !userId}
+          onClick={() => run(() => bind({ serialNumber: device.serial, userId }))}>Lier</button>
+      </>
+    }
   }
 
   return (
-    <div>
-      {device.assignedTo ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontWeight: 550 }}>{device.assignee}</span>
-          <button className="btn ghost sm" style={{ color: "var(--neg)" }} disabled={busy} onClick={onUnbind}>Délier</button>
-        </div>
-      ) : device.status !== "active" ? (
-        <span className="cell-sub">Non affecté · appareil indisponible</span>
-      ) : requester ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span className="tag attente">Demande de liaison</span>
-          <button className="btn brand sm" disabled={busy}
-            onClick={() => run(() => bind({ serialNumber: device.serial, userId: requester.id }))}>Lier à {requester.name}</button>
-        </div>
-      ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <select className="filter-select" value={userId} onChange={e => setUserId(e.target.value)} disabled={busy}>
-            <option value="">{eligible.length ? "Choisir un agent…" : "Aucun agent disponible"}</option>
-            {eligible.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-          <button className="btn sm" disabled={busy || !userId}
-            onClick={() => run(() => bind({ serialNumber: device.serial, userId }))}>Lier</button>
-        </div>
-      )}
-      {requester && (
-        <div className="cell-sub" style={{ marginTop: 2 }}>
-          Téléphone enregistré par {requester.name} · {relTime(device.requestedAt)} · vérifiez que le numéro affiché sur son écran est le même
-        </div>
-      )}
-      {device.boundBy && !requester && (
-        <div className="cell-sub" style={{ marginTop: 2 }}>
-          {device.assignedTo ? "Lié" : "Délié"} par {device.boundBy} · {relTime(device.boundAt)}
-        </div>
-      )}
-      {error && <div style={{ color: "var(--neg)", fontSize: 11.5, marginTop: 4 }}>{String(error)}</div>}
-    </div>
+    <tr>
+      <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 550 }}>{device.serial}</td>
+      <td>{device.model}</td>
+      <td>
+        {assignee}
+        {pending && (
+          <div className="cell-sub" style={{ marginTop: 2 }}>
+            {device.status !== "active"
+              ? "Appareil indisponible : remettez-le en service avant de le lier"
+              : canBind && !requester
+                ? "Cet agent ne peut pas être lié (suspendu, sans droit d'encaissement ou déjà équipé)"
+                : `Téléphone enregistré ${relTime(device.requestedAt)} · vérifiez que le numéro affiché sur son écran est le même`}
+          </div>
+        )}
+        {canBind && device.boundBy && !pending && (
+          <div className="cell-sub" style={{ marginTop: 2 }}>
+            {device.assignedTo ? "Lié" : "Délié"} par {device.boundBy} · {relTime(device.boundAt)}
+          </div>
+        )}
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}><SyncTag d={device}/></td>
+      <td><PhoneCell t={device.telemetry}/></td>
+      <td><AlertsCell d={device}/></td>
+      <td className="cell-sub">{relTime(device.lastSync)}</td>
+      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{actions}</div>
+        {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 11.5, marginTop: 4 }}>{String(error)}</div>}
+      </td>
+    </tr>
   )
 }
 
@@ -185,6 +209,7 @@ export default function AgentsPage() {
   const [role, setRole] = useState("tous")
   const [creating, setCreating] = useState(false)
   const [staffId, setStaffId]   = useState(null)
+  const [tab, setTab]           = useState("agents")
   // Re-render every minute: online/offline and the alerts depend on the time
   // since the last check-in, which moves even when the data doesn't
   const [, setTick] = useState(0)
@@ -215,7 +240,11 @@ export default function AgentsPage() {
   const staffPage = usePaged(filtered)
   const alertedTpe  = fleet.filter(d => deviceAlerts(d).length > 0).length
   // Binding requests first (oldest first), then devices with alerts
-  const sortedFleet = [...fleet].sort((a, b) =>
+  const needle = q.trim().toLowerCase()
+  const shownFleet = needle
+    ? fleet.filter(d => [d.serial, d.model, d.assignee].some(x => (x ?? "").toLowerCase().includes(needle)))
+    : fleet
+  const sortedFleet = [...shownFleet].sort((a, b) =>
     (a.requestedBy ? 0 : 1) - (b.requestedBy ? 0 : 1) || (a.requestedAt ?? 0) - (b.requestedAt ?? 0) ||
     deviceAlerts(b).length - deviceAlerts(a).length)
   const fleetPage = usePaged(sortedFleet)
@@ -237,6 +266,8 @@ export default function AgentsPage() {
         crumbs={["Admin", "Agents & TPE"]}
         title="Agents & terminaux"
       >
+        {/* IT admins can't open Clients or Transactions: their way in */}
+        {!can.audit && <ImportButton />}
         <Novu />
       </PageHeader>
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -264,9 +295,19 @@ export default function AgentsPage() {
           ))}
         </section>
       )}
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="seg-tabs" role="tablist" aria-label="Agents ou terminaux" style={{ marginBottom: 12 }}>
+        <button role="tab" aria-selected={tab === "agents"} className={"seg-tab" + (tab === "agents" ? " on" : "")} onClick={() => setTab("agents")}>
+          Flotte d'agents <span className="seg-count">{AGENTS.length}</span>
+        </button>
+        <button role="tab" aria-selected={tab === "tpe"} className={"seg-tab" + (tab === "tpe" ? " on" : "")} onClick={() => setTab("tpe")}>
+          Parc de terminaux <span className="seg-count">{fleet.length}</span>
+          {alertedTpe > 0 && <span className="tag alerte" title="TPE en alerte">{alertedTpe} en alerte</span>}
+        </button>
+      </div>
+
+      {tab === "agents" && (
+      <div className="card" role="tabpanel">
         <div className="card-head">
-          <div className="card-title">Flotte d'agents · TPE en service</div>
           <div className="filter-spacer"/>
           <div className="filter-group">
             <label className="filter-label">Agence</label>
@@ -363,99 +404,23 @@ export default function AgentsPage() {
           <Pager paged={staffPage} unit="membres" />
         </div>
       </div>
+      )}
 
-      <div className="row cols-2 agents-row" style={{ marginBottom: 14 }}>
-        <div className="card">
-          <div className="card-head">
-            <div className="card-title">Top collecteurs · ce mois</div>
-            <span className="card-sub" style={{ marginLeft: "auto" }}>Sur le terrain</span>
-          </div>
-          <div style={{ padding: "4px 14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-            {[...AGENTS].filter(a => a.collected).sort((a,b) => b.collected - a.collected).slice(0,4).map((a, i) => {
-              const pct = collected ? Math.round((a.collected / collected) * 100) : 0
-              return (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 18, fontWeight: 600, color: "var(--ink-3)", fontVariantNumeric: "tabular-nums", fontSize: 12 }}>{i+1}</div>
-                  <div className="avatar sm">{initials(a.name)}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 550, fontSize: 13 }}>{a.name}</div>
-                    <div className="cell-sub" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>{a.device?.serial ?? "—"} · {a.branch}</div>
-                    <div className="goal-bar" style={{ marginTop: 4 }}>
-                      <div className="goal-fill" style={{ width: Math.min(100, pct) + "%" }}/>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{fmt(a.collected)}</div>
-                    <div className="cell-sub">{pct}% du total</div>
-                  </div>
-                </div>
-              )
-            })}
-            {rows && !AGENTS.some(a => a.collected) && <div className="cell-sub">Aucune collecte ce mois</div>}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-head">
-            <div className="card-title">Permissions · matrice</div>
-            <span className="card-sub" style={{ marginLeft: "auto" }}>Par rôle</span>
-          </div>
-          <div style={{ padding: "0 14px 14px", overflowX: "auto" }}>
-            <table className="perm-table">
-              <thead>
-                <tr><th></th><th>Agent</th><th>Superv.</th><th>Compta.</th><th>Admin IT</th></tr>
-              </thead>
-              <tbody>
-                {/* Mirrors the role definitions in convex/authz.ts */}
-                {[
-                  ["Encaisser (TPE)",            1,1,0,0],
-                  ["Inscrire un client",         1,1,0,0],
-                  ["Demander un décaissement",   1,1,0,0],
-                  ["Annuler une transaction",    0,1,0,0],
-                  ["Approuver un décaissement",  0,1,0,0],
-                  ["Vérifier l'identité client", 0,1,1,0],
-                  ["Clôturer la caisse",         0,0,1,0],
-                  ["Lier les TPE",               0,0,0,1],
-                  ["Gérer le personnel",         0,0,0,1],
-                ].map(([label, ...vals]) => (
-                  <tr key={label}>
-                    <td>{label}</td>
-                    {vals.map((v, i) => (
-                      <td key={i} style={{ textAlign: "center" }}>
-                        {v ? <span className="perm-yes"><I.Check size={11} stroke="white"/></span> : <span className="perm-no">—</span>}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
+      {tab === "tpe" && (
+      <div className="card" role="tabpanel">
         <div className="card-head">
-          <div className="card-title">Parc de terminaux</div>
-          {pendingTpe > 0 && <span className="tag attente" style={{ marginLeft: 10 }}>{pendingTpe} demande{pendingTpe > 1 ? "s" : ""} de liaison</span>}
-          {alertedTpe > 0 && <span className="tag alerte" style={{ marginLeft: 10 }}>{alertedTpe} TPE en alerte</span>}
+          {pendingTpe > 0 && <span className="tag attente">{pendingTpe} demande{pendingTpe > 1 ? "s" : ""} de liaison</span>}
+          {alertedTpe > 0 && <span className="tag alerte">{alertedTpe} TPE en alerte</span>}
           <span className="card-sub" style={{ marginLeft: "auto" }}>{fleet.length} TPE enregistrés · liaison réservée à l'Admin IT</span>
         </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Téléphone</th><th>Alertes</th><th>Dernière activité</th></tr>
+              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Téléphone</th><th>Alertes</th><th>Dernière activité</th><th><span className="sr-only">Actions</span></th></tr>
             </thead>
             <tbody>
               {fleetPage.rows.map(d => (
-                <tr key={d.serial}>
-                  <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 550 }}>{d.serial}</td>
-                  <td>{d.model}</td>
-                  <td><BindCell device={d} agents={AGENTS} canBind={!!can.bind}/></td>
-                  <td><SyncTag d={d}/></td>
-                  <td><PhoneCell t={d.telemetry}/></td>
-                  <td><AlertsCell d={d}/></td>
-                  <td className="cell-sub">{relTime(d.lastSync)}</td>
-                </tr>
+                <FleetRow key={d.serial} device={d} agents={AGENTS} canBind={!!can.bind}/>
               ))}
             </tbody>
           </table>
@@ -463,6 +428,7 @@ export default function AgentsPage() {
           <Pager paged={fleetPage} unit="terminaux" />
         </div>
       </div>
+      )}
       {creating && (
         <NewStaffDrawer onClose={() => setCreating(false)}
           onCreated={(id) => { setCreating(false); setStaffId(id) }} />

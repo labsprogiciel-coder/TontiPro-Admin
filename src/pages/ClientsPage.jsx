@@ -4,6 +4,7 @@ import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { errorMessage, fmt, fmtDateTime, initials, relTime, KPI, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
+import { ImportButton } from '../components/ImportDialog'
 import Novu from '../components/Inbox'
 
 /**
@@ -191,6 +192,7 @@ export default function ClientsPage() {
         crumbs={["Clients"]}
         title="Clients"
       >
+        <ImportButton kind="customers" />
         <Novu />
       </PageHeader>
 

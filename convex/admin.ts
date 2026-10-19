@@ -238,6 +238,37 @@ export const dashboard = query({
       .sort((a, b) => (b.lastTx ?? 0) - (a.lastTx ?? 0))
       .slice(0, 5);
 
+    // This month's field collections (TPE deposits, not imports or the
+    // partner API), by agent: the four largest
+    const fieldDeposits = deposits.filter(
+      (t) => t.timestamp >= monthStart && !t.imported && t.channel !== "api",
+    );
+    const byAgent = new Map<Id<"users">, { collected: number; txCount: number; serials: Set<string> }>();
+    for (const t of fieldDeposits) {
+      const a = byAgent.get(t.agentId) ?? { collected: 0, txCount: 0, serials: new Set<string>() };
+      a.collected += t.amount;
+      a.txCount += 1;
+      // The TPEs that recorded them, even if the agent has changed TPE since
+      a.serials.add(t.tpeId);
+      byAgent.set(t.agentId, a);
+    }
+    const users = byId(data.users);
+    const branches = byId(data.branches);
+    const topCollectors = [...byAgent.entries()]
+      .sort((a, b) => b[1].collected - a[1].collected)
+      .slice(0, 4)
+      .map(([agentId, a]) => {
+        const user = users.get(agentId);
+        return {
+          id: agentId as string,
+          name: user?.fullName ?? "—",
+          branch: (user && branches.get(user.branchId)?.name) ?? "—",
+          serials: [...a.serials].sort(),
+          collected: a.collected,
+          txCount: a.txCount,
+        };
+      });
+
     return {
       kpis: {
         activeClients: data.customers.filter((c) => c.status === "verified").length,
@@ -255,6 +286,8 @@ export const dashboard = query({
       volume,
       clients,
       recent: movementRows(data).slice(0, 6),
+      topCollectors,
+      collectedMonth: sum(fieldDeposits),
       branchCount: data.branches.length,
       agentCount: data.users.length,
     };

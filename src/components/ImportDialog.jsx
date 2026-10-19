@@ -1,12 +1,12 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
-import { PageHeader, errorMessage, fmt } from '../components'
+import { errorMessage, fmt } from '../components'
 import { I } from '../icons'
 import { FIELDS, IMPORT_REASONS as REASONS, TEMPLATES, buildItems, downloadText, guessMapping, readRows, toCsv } from '../lib/sheet'
-import BackupImport from './BackupImport'
-import { Pager, usePaged } from '../components/Pager'
-import { WizardFoot, WizardSteps } from '../components/Wizard'
+import BackupImport from '../pages/BackupImport'
+import { Pager, usePaged } from './Pager'
+import { WizardFoot, WizardSteps } from './Wizard'
 
 const BATCH = 200 // = IMPORT_BATCH_SIZE in convex/imports.ts
 const STEPS = ["Fichier", "Colonnes", "Aperçu", "Résultat"]
@@ -28,10 +28,29 @@ const KINDS = {
   },
 }
 
-/** Import customers or past transactions from an .xlsx or .csv file into the caller's branch. */
-export default function ImportPage() {
+/**
+ * "Importer" button that opens the import wizard in a dialog. Shown only to
+ * staff with data:import; `kind` is the tab the wizard opens on.
+ */
+export function ImportButton({ kind = "backup", label = "Importer" }) {
   const me = useQuery(api.users.me)
-  const [kind, setKind] = useState("backup")
+  const [open, setOpen] = useState(false)
+  if (!me?.can?.importData) return null
+  return (
+    <>
+      <button className="btn" onClick={() => setOpen(true)}><I.ArrowDown size={14}/>{label}</button>
+      {open && <ImportDialog initialKind={kind} onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
+/**
+ * Import customers, past transactions or an old-app backup from an .xlsx or
+ * .csv file into the caller's branch, as a modal wizard. It can't be closed
+ * while rows are being sent.
+ */
+export default function ImportDialog({ initialKind = "backup", onClose }) {
+  const [kind, setKind] = useState(initialKind)
   const [file, setFile] = useState(null)           // { name, headers, data }
   const [mapping, setMapping] = useState({})
   const [readError, setReadError] = useState(null)
@@ -110,19 +129,27 @@ export default function ImportPage() {
     )
 
   const running = !!run && !run.finished
+  const busy = running || backupBusy
+
+  // Native modal: focus is trapped inside and Esc closes it, unless busy
+  const dialogRef = useRef(null)
+  useEffect(() => { dialogRef.current?.showModal() }, [])
+  const close = () => { if (!busy) onClose() }
 
   return (
-    <div>
-      <PageHeader
-        crumbs={["Admin"]}
-        title="Importer"
-      />
-
+    <dialog ref={dialogRef} className="modal" aria-labelledby="import-title"
+      onCancel={(e) => { e.preventDefault(); close() }}>
+      <div className="modal-head">
+        <div id="import-title" className="modal-title">Importer des données</div>
+        <button className="btn ghost sm" style={{ padding: 6 }} onClick={close} disabled={busy}
+          aria-label="Fermer" title={busy ? "Import en cours" : "Fermer"}>✕</button>
+      </div>
+      <div className="modal-body">
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card-head">
           <div className="seg">
             {Object.entries(KINDS).map(([k, v]) => (
-              <button key={k} className={kind === k ? "on" : ""} onClick={() => switchKind(k)} disabled={running || backupBusy}>{v.label}</button>
+              <button key={k} className={kind === k ? "on" : ""} onClick={() => switchKind(k)} disabled={busy}>{v.label}</button>
             ))}
           </div>
           <div className="filter-spacer"/>
@@ -277,6 +304,7 @@ export default function ImportPage() {
           </>}
         </div>
       )}
-    </div>
+      </div>
+    </dialog>
   )
 }
