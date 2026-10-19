@@ -105,8 +105,12 @@ function PhoneCell({ t }) {
   )
 }
 
-/** Render TPE assignment controls and audit details; mutations enforce devices:bind permission. */
-function BindCell({ device, agents, canBind }) {
+/**
+ * One terminal row. Who it is assigned to (and the binding request or audit
+ * line) sits in "Affecté à"; the Lier / Délier controls sit in the last,
+ * right-aligned column. The mutations enforce devices:bind.
+ */
+function FleetRow({ device, agents, canBind }) {
   const bind   = useMutation(api.devices.bindDevice)
   const unbind = useMutation(api.devices.unbindDevice)
   const [userId, setUserId] = useState("")
@@ -131,51 +135,62 @@ function BindCell({ device, agents, canBind }) {
   // Mirrors bindDevice: active field agents / supervisors without a terminal
   const eligible = agents.filter(a => a.status === "active" && a.canCollect && !a.device)
   // The agent whose phone registered this serial, if they can still be bound
-  const requester = device.requestedBy ? eligible.find(a => a.id === device.requestedBy) : null
+  const requester = canBind && device.requestedBy ? eligible.find(a => a.id === device.requestedBy) : null
 
-  if (!canBind) {
-    return device.assignedTo
-      ? <span style={{ fontWeight: 550 }}>{device.assignee}</span>
-      : <span className="cell-sub">{device.requester ? `Non affecté · demandé par ${device.requester}` : "Non affecté"}</span>
+  let assignee
+  if (device.assignedTo) assignee = <span style={{ fontWeight: 550 }}>{device.assignee}</span>
+  else if (requester) assignee = <span className="tag attente">Demande de liaison · {requester.name}</span>
+  else if (device.status !== "active") assignee = <span className="cell-sub">Non affecté · appareil indisponible</span>
+  else assignee = <span className="cell-sub">{!canBind && device.requester ? `Non affecté · demandé par ${device.requester}` : "Non affecté"}</span>
+
+  let actions = null
+  if (canBind) {
+    if (device.assignedTo) {
+      actions = <button className="btn sm" style={{ color: "var(--neg)" }} disabled={busy} onClick={onUnbind}>Délier</button>
+    } else if (requester) {
+      actions = (
+        <button className="btn brand sm" disabled={busy}
+          onClick={() => run(() => bind({ serialNumber: device.serial, userId: requester.id }))}>Lier à {requester.name}</button>
+      )
+    } else if (device.status === "active") {
+      actions = <>
+        <select className="filter-select" aria-label={`Agent pour ${device.serial}`} value={userId}
+          onChange={e => setUserId(e.target.value)} disabled={busy}>
+          <option value="">{eligible.length ? "Choisir un agent…" : "Aucun agent disponible"}</option>
+          {eligible.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+        <button className="btn sm" disabled={busy || !userId}
+          onClick={() => run(() => bind({ serialNumber: device.serial, userId }))}>Lier</button>
+      </>
+    }
   }
 
   return (
-    <div>
-      {device.assignedTo ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontWeight: 550 }}>{device.assignee}</span>
-          <button className="btn ghost sm" style={{ color: "var(--neg)" }} disabled={busy} onClick={onUnbind}>Délier</button>
-        </div>
-      ) : device.status !== "active" ? (
-        <span className="cell-sub">Non affecté · appareil indisponible</span>
-      ) : requester ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span className="tag attente">Demande de liaison</span>
-          <button className="btn brand sm" disabled={busy}
-            onClick={() => run(() => bind({ serialNumber: device.serial, userId: requester.id }))}>Lier à {requester.name}</button>
-        </div>
-      ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <select className="filter-select" value={userId} onChange={e => setUserId(e.target.value)} disabled={busy}>
-            <option value="">{eligible.length ? "Choisir un agent…" : "Aucun agent disponible"}</option>
-            {eligible.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-          <button className="btn sm" disabled={busy || !userId}
-            onClick={() => run(() => bind({ serialNumber: device.serial, userId }))}>Lier</button>
-        </div>
-      )}
-      {requester && (
-        <div className="cell-sub" style={{ marginTop: 2 }}>
-          Téléphone enregistré par {requester.name} · {relTime(device.requestedAt)} · vérifiez que le numéro affiché sur son écran est le même
-        </div>
-      )}
-      {device.boundBy && !requester && (
-        <div className="cell-sub" style={{ marginTop: 2 }}>
-          {device.assignedTo ? "Lié" : "Délié"} par {device.boundBy} · {relTime(device.boundAt)}
-        </div>
-      )}
-      {error && <div style={{ color: "var(--neg)", fontSize: 11.5, marginTop: 4 }}>{String(error)}</div>}
-    </div>
+    <tr>
+      <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 550 }}>{device.serial}</td>
+      <td>{device.model}</td>
+      <td>
+        {assignee}
+        {requester && (
+          <div className="cell-sub" style={{ marginTop: 2 }}>
+            Téléphone enregistré {relTime(device.requestedAt)} · vérifiez que le numéro affiché sur son écran est le même
+          </div>
+        )}
+        {canBind && device.boundBy && !requester && (
+          <div className="cell-sub" style={{ marginTop: 2 }}>
+            {device.assignedTo ? "Lié" : "Délié"} par {device.boundBy} · {relTime(device.boundAt)}
+          </div>
+        )}
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}><SyncTag d={device}/></td>
+      <td><PhoneCell t={device.telemetry}/></td>
+      <td><AlertsCell d={device}/></td>
+      <td className="cell-sub">{relTime(device.lastSync)}</td>
+      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{actions}</div>
+        {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 11.5, marginTop: 4 }}>{String(error)}</div>}
+      </td>
+    </tr>
   )
 }
 
@@ -393,19 +408,11 @@ export default function AgentsPage() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Téléphone</th><th>Alertes</th><th>Dernière activité</th></tr>
+              <tr><th>Numéro de série</th><th>Modèle</th><th>Affecté à</th><th>Statut</th><th>Téléphone</th><th>Alertes</th><th>Dernière activité</th><th><span className="sr-only">Actions</span></th></tr>
             </thead>
             <tbody>
               {fleetPage.rows.map(d => (
-                <tr key={d.serial}>
-                  <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 550 }}>{d.serial}</td>
-                  <td>{d.model}</td>
-                  <td><BindCell device={d} agents={AGENTS} canBind={!!can.bind}/></td>
-                  <td><SyncTag d={d}/></td>
-                  <td><PhoneCell t={d.telemetry}/></td>
-                  <td><AlertsCell d={d}/></td>
-                  <td className="cell-sub">{relTime(d.lastSync)}</td>
-                </tr>
+                <FleetRow key={d.serial} device={d} agents={AGENTS} canBind={!!can.bind}/>
               ))}
             </tbody>
           </table>
