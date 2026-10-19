@@ -6,6 +6,7 @@ import { errorMessage, fmt, fmtDuration, initials, mapUrl, relTime, KpiSkeleton,
 import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 import { NewStaffDrawer, StaffDrawer } from '../components/StaffDrawers'
+import { ImportButton } from '../components/ImportDialog'
 
 const ROLE_TAGS = {
   "Admin IT":      { bg: "oklch(0.94 0.04 50)",  fg: "var(--brand-ink)" },
@@ -242,6 +243,8 @@ export default function AgentsPage() {
         crumbs={["Admin", "Agents & TPE"]}
         title="Agents & terminaux"
       >
+        {/* IT admins can't open Clients or Transactions: their way in */}
+        {!can.audit && <ImportButton />}
         <Novu />
       </PageHeader>
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>

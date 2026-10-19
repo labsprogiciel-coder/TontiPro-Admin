@@ -1314,3 +1314,24 @@ textarea.input { font-family: inherit; resize: vertical; min-height: 64px; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+/* === Modal dialog (native <dialog>) === */
+.modal {
+  width: min(960px, 94vw);
+  max-height: 90vh;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg, 14px);
+  background: var(--bg, var(--surface));
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.modal[open] { display: flex; flex-direction: column; animation: scrim-in .15s ease-out; }
+.modal::backdrop { background: oklch(0.2 0.01 70 / 0.28); backdrop-filter: blur(2px); }
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.modal-title { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+.modal-body { padding: 16px 18px 18px; overflow: auto; }

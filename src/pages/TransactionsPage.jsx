@@ -5,6 +5,7 @@ import { I } from '../icons'
 import Novu from '../components/Inbox'
 import { errorMessage, fmt, fmtDateTime, fmtDuration, initials, mapUrl, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
+import { ImportButton } from '../components/ImportDialog'
 
 const PERIODS = { "24h": 1, "7j": 7, "30j": 30, "Tout": null }
 
@@ -201,6 +202,7 @@ export default function TransactionsPage() {
         crumbs={["Transactions"]}
         title="Transactions"
       >
+        <ImportButton kind="transactions" />
         <Novu />
       </PageHeader>
 
