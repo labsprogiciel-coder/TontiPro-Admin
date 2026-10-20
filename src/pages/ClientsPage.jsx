@@ -44,55 +44,82 @@ function ProductField({ client }) {
   )
 }
 
-/** Client detail drawer with profile and recent movements. */
+const CLIENT_STATUS = {
+  actif:   { cls: "actif",   label: "Actif" },
+  archive: { cls: "archive", label: "Archivé" },
+}
+/** The client's status as a tag; anything else is still awaiting KYC. */
+const ClientStatus = ({ status }) => {
+  const s = CLIENT_STATUS[status] ?? { cls: "attente", label: "En attente" }
+  return <span className={"tag " + s.cls}>{s.label}</span>
+}
+
+/**
+ * Client detail drawer: who the client is (header), three key figures in one
+ * row, the profile as a compact two-column grid, then the recent movements.
+ * Deposits and withdrawals are recorded on the TPE, so the only action here is
+ * calling the client.
+ */
 function ClientDrawer({ client, onClose }) {
   const history = useQuery(api.admin.customerHistory, client ? { customerId: client.id } : "skip")
   if (!client) return null
+  const since = new Date(client.joined).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
   return (
     <>
       <div className="drawer-scrim" onClick={onClose}/>
-      <aside className="drawer">
+      <aside className="drawer" role="dialog" aria-modal="true" aria-label={`Client ${client.name}`}>
         <div className="drawer-head">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             <div className="avatar lg">{initials(client.name)}</div>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 16, letterSpacing: "-0.015em" }}>{client.name}</div>
-              <div className="cell-sub">{client.phone} · client depuis {new Date(client.joined).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 600, fontSize: 16, letterSpacing: "-0.015em" }}>{client.name}</span>
+                <ClientStatus status={client.status} />
+              </div>
+              <div className="cell-sub" style={{ marginTop: 2 }}>
+                <span style={{ fontFamily: "var(--font-mono)" }}>{client.phone}</span> · client depuis {since}
+              </div>
             </div>
           </div>
-          <button className="btn ghost sm" onClick={onClose} style={{ padding: 6 }}>✕</button>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            {client.phone && (
+              <a className="btn sm" href={`tel:${client.phone}`} title={`Appeler ${client.phone}`}>
+                <I.Phone size={14}/>Appeler
+              </a>
+            )}
+            <button className="btn ghost sm" onClick={onClose} style={{ padding: 6 }} aria-label="Fermer">✕</button>
+          </div>
         </div>
 
-        <div className="drawer-body">
-          <div className="stat-grid">
-            <div className="stat"><div className="cell-sub">Solde courant</div><div className="stat-v">{fmt(client.balance)} <span className="u">FCFA</span></div></div>
-            <div className="stat"><div className="cell-sub">Ce mois</div><div className="stat-v">{fmt(client.monthlyAvg)} <span className="u">FCFA</span></div></div>
-            <div className="stat"><div className="cell-sub">Transactions</div><div className="stat-v">{client.txCount}</div></div>
+        <div className="drawer-body" style={{ gap: 18 }}>
+          <div className="stat-grid cols-3">
+            <div className="stat"><div className="cell-sub">Solde</div><div className="stat-v">{fmt(client.balance)}<span className="u">FCFA</span></div></div>
+            <div className="stat"><div className="cell-sub">Dépôts ce mois</div><div className="stat-v">{fmt(client.monthlyAvg)}<span className="u">FCFA</span></div></div>
+            <div className="stat"><div className="cell-sub">Mouvements</div><div className="stat-v">{client.txCount}</div></div>
           </div>
 
-          <div className="drawer-section">
-            <div className="card-title" style={{ marginBottom: 8 }}>Détails</div>
-            <dl className="info-list">
-              <dt>Statut</dt><dd><span className={"tag " + (client.status === "actif" ? "actif" : client.status === "archive" ? "archive" : "attente")}>{client.status === "actif" ? "Actif" : client.status === "archive" ? "Archivé" : "En attente"}</span></dd>
-              <dt>Pièce d'identité</dt><dd style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{client.idNumber}</dd>
-              <dt>Agence</dt><dd>{client.branch}</dd>
-              <dt>Agent référent</dt><dd>{client.agent}</dd>
-              <dt>Produit</dt><dd><ProductField client={client} /></dd>
-              <dt>Dernier mouvement</dt><dd>{relTime(client.lastTx)}</dd>
-            </dl>
-          </div>
+          <dl className="field-grid">
+            <div><dt>Agence</dt><dd>{client.branch}</dd></div>
+            <div><dt>Agent référent</dt><dd>{client.agent}</dd></div>
+            <div><dt>Pièce d'identité</dt><dd style={{ fontFamily: client.idNumber ? "var(--font-mono)" : undefined }}>{client.idNumber || <span className="cell-sub">Non renseignée</span>}</dd></div>
+            <div><dt>Dernier mouvement</dt><dd>{client.lastTx ? relTime(client.lastTx) : <span className="cell-sub">Aucun</span>}</dd></div>
+            <div className="span-2"><dt>Produit</dt><dd><ProductField client={client} /></dd></div>
+          </dl>
 
           <div className="drawer-section">
-            <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", marginBottom: 6 }}>
               <div className="card-title">Historique récent</div>
-                          </div>
+              {history && history.length > 0 && (
+                <span className="cell-sub" style={{ marginLeft: "auto" }}>{history.length} dernier{history.length > 1 ? "s" : ""} mouvement{history.length > 1 ? "s" : ""}</span>
+              )}
+            </div>
             <div className="tx-list" style={{ padding: 0 }}>
               {history === undefined && <TableSkeleton rows={3} label="Chargement de l'historique…" />}
               {history && history.length === 0 && <div className="cell-sub" style={{ padding: 12 }}>Aucun mouvement</div>}
-              {(history ?? []).map((t, i) => (
-                <div key={i} className="tx-row">
+              {(history ?? []).map((t) => (
+                <div key={t.id} className="tx-row">
                   <div className={"tx-icon " + t.type}>{t.type === "in" ? <I.ArrowDown size={14}/> : <I.ArrowUp size={14}/>}</div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div className="tx-name">{t.label}{t.status === "annulée" ? " (annulé)" : ""}</div>
                     <div className="tx-time">{fmtDateTime(t.timestamp)} · {t.agent}</div>
                   </div>
@@ -101,12 +128,6 @@ function ClientDrawer({ client, onClose }) {
               ))}
             </div>
           </div>
-        </div>
-
-        <div className="drawer-foot">
-          <button className="btn"><I.Phone size={14}/>Appeler</button>
-          <button className="btn"><I.ArrowUp size={14}/>Retrait</button>
-          <button className="btn brand" style={{ marginLeft: "auto" }}><I.Plus size={14} stroke="white"/>Nouveau dépôt</button>
         </div>
       </aside>
     </>
@@ -288,9 +309,7 @@ export default function ClientsPage() {
                     <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>{c.txCount}</td>
                     <td className="cell-sub">{c.agent}</td>
                     <td>
-                      <span className={"tag " + (c.status === "actif" ? "actif" : c.status === "archive" ? "archive" : "attente")}>
-                        {c.status === "actif" ? "Actif" : c.status === "archive" ? "Archivé" : "En attente"}
-                      </span>
+                      <ClientStatus status={c.status} />
                     </td>
                     <td><button className="btn ghost sm" style={{ padding: 4 }} onClick={e => { e.stopPropagation(); setOpenClient(c) }}><I.Arrow size={12}/></button></td>
                   </tr>
@@ -315,9 +334,7 @@ export default function ClientsPage() {
                     <div style={{ fontWeight: 600 }}>{c.name}</div>
                     <div className="cell-sub">{c.phone}</div>
                   </div>
-                  <span className={"tag " + (c.status === "actif" ? "actif" : c.status === "archive" ? "archive" : "attente")}>
-                    {c.status === "actif" ? "Actif" : c.status === "archive" ? "Archivé" : "En attente"}
-                  </span>
+                  <ClientStatus status={c.status} />
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14, fontSize: 12 }}>
                   <div>
