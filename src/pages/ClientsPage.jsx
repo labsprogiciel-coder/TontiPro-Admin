@@ -5,6 +5,7 @@ import { I } from '../icons'
 import { errorMessage, fmt, fmtDateTime, initials, relTime, KPI, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import IdDocument from '../components/IdDocument'
+import ClientProfile from '../components/ClientProfile'
 import { ImportButton } from '../components/ImportDialog'
 import Novu from '../components/Inbox'
 
@@ -107,6 +108,8 @@ function ClientDrawer({ client, onClose }) {
             <div className="span-2"><dt>Produit</dt><dd><ProductField client={client} /></dd></div>
             <div className="span-2"><dt>Pièce d'identité · photos</dt><dd><IdDocument customerId={client.id} /></dd></div>
           </dl>
+
+          <ClientProfile key={client.id} client={client} />
 
           <div className="drawer-section">
             <div style={{ display: "flex", alignItems: "baseline", marginBottom: 6 }}>

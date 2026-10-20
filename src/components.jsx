@@ -74,6 +74,7 @@ const ERROR_MESSAGES = {
   INVALID_ID_NUMBER: "Numéro de pièce d'identité trop long.",
   INVALID_AMOUNT:    "Montant invalide.",
   INVALID_IMAGE:     "Choisissez une image (JPEG, PNG…) de 5 Mo maximum.",
+  INVALID_PROFILE:   "Vérifiez l'année de naissance et le nombre d'enfants.",
   CUSTOMER_NOT_FOUND: "Client introuvable dans cette agence.",
   NO_DEVICE:         "Aucun TPE actif n'est lié à cet agent.",
   DAY_CLOSED:        "La caisse du jour est déjà clôturée.",

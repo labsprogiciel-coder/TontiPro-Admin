@@ -8,7 +8,23 @@ import { isWithdrawal, signedAmount } from "./transactions";
 import { requireUser } from "./users";
 
 /** Extra KYC and collection details the app keeps on a customer. */
+// Personal profile (client drawer "Profil"). null or "" clears a field.
+export const GENDERS = ["F", "M"] as const;
+export const MARITAL_STATUSES = ["celibataire", "marie", "union", "divorce", "veuf"] as const;
+export const ACTIVITY_TYPES = [
+  "commerce", "restauration", "agriculture", "elevage", "artisanat",
+  "transport", "services", "salarie", "autre",
+] as const;
+const oneOf = <T extends readonly string[]>(values: T) =>
+  v.union(...values.map((x) => v.literal(x)), v.literal(""), v.null());
+
 const metadataValidator = v.object({
+  gender: v.optional(oneOf(GENDERS)),
+  birthYear: v.optional(v.union(v.number(), v.null())),
+  maritalStatus: v.optional(oneOf(MARITAL_STATUSES)),
+  children: v.optional(v.union(v.number(), v.null())),
+  activityType: v.optional(oneOf(ACTIVITY_TYPES)),
+  activity: v.optional(v.union(v.string(), v.null())), // e.g. "Boutique alimentaire, marché central"
   address: v.optional(v.string()),
   groupName: v.optional(v.string()),
   commitmentAmount: v.optional(v.number()),
@@ -23,6 +39,33 @@ const metadataValidator = v.object({
   // Client ID in the old app's backup, set by imports.ts to match its transactions
   legacyId: v.optional(v.string()),
 });
+
+/**
+ * Check the profile fields of a metadata patch and turn "" / null into
+ * "remove this field" (undefined). Throws INVALID_PROFILE for an impossible
+ * birth year or number of children.
+ */
+export function cleanProfile<T extends Record<string, unknown>>(metadata: T, now = Date.now()): T {
+  const out: Record<string, unknown> = { ...metadata };
+  for (const [k, val] of Object.entries(out)) {
+    if (val === null || val === "") out[k] = undefined;
+  }
+  if (typeof out.activity === "string") out.activity = out.activity.trim().slice(0, 120) || undefined;
+  const year = new Date(now).getUTCFullYear();
+  if (out.birthYear !== undefined) {
+    const y = out.birthYear as number;
+    if (!Number.isInteger(y) || y < year - 110 || y > year - 15) throw new ConvexError("INVALID_PROFILE");
+  }
+  if (out.children !== undefined) {
+    const c = out.children as number;
+    if (!Number.isInteger(c) || c < 0 || c > 30) throw new ConvexError("INVALID_PROFILE");
+  }
+  return out as T;
+}
+
+/** The object without its undefined fields. */
+const withoutUndefined = <T extends Record<string, unknown>>(o: T) =>
+  Object.fromEntries(Object.entries(o).filter(([, x]) => x !== undefined)) as T;
 
 /** Trim a name; throw NAME_REQUIRED if empty or longer than 200 characters. */
 export function cleanName(name: string) {
@@ -155,7 +198,7 @@ export const createProspect = mutation({
       branchId: caller.branchId,
       onboardedBy: caller._id,
       status: "prospect",
-      metadata: args.metadata,
+      metadata: args.metadata ? withoutUndefined(cleanProfile(args.metadata)) : undefined,
     });
   },
 });
@@ -184,7 +227,10 @@ export const update = mutation({
     if (fields.fullName !== undefined) patch.fullName = cleanName(fields.fullName);
     if (fields.phoneNumber !== undefined) patch.phoneNumber = cleanPhone(fields.phoneNumber);
     if (fields.idNumber !== undefined) patch.idNumber = cleanIdNumber(fields.idNumber);
-    if (fields.metadata !== undefined) patch.metadata = { ...(customer.metadata ?? {}), ...fields.metadata };
+    if (fields.metadata !== undefined) {
+      // Fields cleared by the patch disappear instead of being stored as undefined
+      patch.metadata = withoutUndefined({ ...(customer.metadata ?? {}), ...cleanProfile(fields.metadata) });
+    }
 
     const sensitive =
       (patch.phoneNumber !== undefined && patch.phoneNumber !== customer.phoneNumber) ||

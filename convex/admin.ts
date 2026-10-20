@@ -132,6 +132,16 @@ function customerRows(data: Ledger, now: number) {
       lastTx,
       agent: users.get(c.onboardedBy)?.fullName ?? "—",
       productId: c.productId ?? null,
+      // Personal profile (client drawer); absent fields are null
+      profile: {
+        gender: c.metadata?.gender ?? null,
+        birthYear: c.metadata?.birthYear ?? null,
+        maritalStatus: c.metadata?.maritalStatus ?? null,
+        children: c.metadata?.children ?? null,
+        activityType: c.metadata?.activityType ?? null,
+        activity: c.metadata?.activity ?? null,
+        address: c.metadata?.address ?? null,
+      },
       branch: branch?.name ?? "—",
       village: branch?.location.split(",")[0] ?? "—",
     };

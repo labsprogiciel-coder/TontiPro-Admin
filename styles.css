@@ -1362,3 +1362,8 @@ textarea.input { font-family: inherit; resize: vertical; min-height: 64px; }
   display: flex; align-items: center; justify-content: space-between;
   margin-top: 4px; font-size: 12px; font-weight: 500;
 }
+
+/* Profile edit form in the client drawer */
+.profile-form label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.profile-form label > span { font-size: 11.5px; color: var(--ink-3); }
+.profile-form .input { width: 100%; }
