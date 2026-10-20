@@ -4,6 +4,7 @@ import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { errorMessage, fmt, fmtDateTime, initials, relTime, KPI, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
+import IdDocument from '../components/IdDocument'
 import { ImportButton } from '../components/ImportDialog'
 import Novu from '../components/Inbox'
 
@@ -104,6 +105,7 @@ function ClientDrawer({ client, onClose }) {
             <div><dt>Pièce d'identité</dt><dd style={{ fontFamily: client.idNumber ? "var(--font-mono)" : undefined }}>{client.idNumber || <span className="cell-sub">Non renseignée</span>}</dd></div>
             <div><dt>Dernier mouvement</dt><dd>{client.lastTx ? relTime(client.lastTx) : <span className="cell-sub">Aucun</span>}</dd></div>
             <div className="span-2"><dt>Produit</dt><dd><ProductField client={client} /></dd></div>
+            <div className="span-2"><dt>Pièce d'identité · photos</dt><dd><IdDocument customerId={client.id} /></dd></div>
           </dl>
 
           <div className="drawer-section">

@@ -1346,3 +1346,19 @@ textarea.input { font-family: inherit; resize: vertical; min-height: 64px; }
 }
 .modal-title { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
 .modal-body { padding: 16px 18px 18px; overflow: auto; }
+
+/* === ID document photos (client drawer) === */
+.id-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.id-slot { margin: 0; min-width: 0; }
+.id-frame {
+  display: block; aspect-ratio: 85.6 / 54; /* ID-1 card */
+  border-radius: var(--r-sm); overflow: hidden;
+  background: var(--surface-inset); border: 1px solid var(--border-subtle);
+}
+.id-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.id-placeholder { display: grid; place-items: center; color: var(--ink-3); padding: 8px; }
+.id-placeholder-art { width: 100%; height: 100%; }
+.id-slot figcaption {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 4px; font-size: 12px; font-weight: 500;
+}

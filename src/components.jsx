@@ -73,6 +73,7 @@ const ERROR_MESSAGES = {
   PHONE_TAKEN:       "Ce numéro de téléphone est déjà utilisé.",
   INVALID_ID_NUMBER: "Numéro de pièce d'identité trop long.",
   INVALID_AMOUNT:    "Montant invalide.",
+  INVALID_IMAGE:     "Choisissez une image (JPEG, PNG…) de 5 Mo maximum.",
   CUSTOMER_NOT_FOUND: "Client introuvable dans cette agence.",
   NO_DEVICE:         "Aucun TPE actif n'est lié à cet agent.",
   DAY_CLOSED:        "La caisse du jour est déjà clôturée.",

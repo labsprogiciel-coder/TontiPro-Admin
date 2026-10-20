@@ -1,7 +1,7 @@
 // convex/customers.ts — branch-scoped customer reads and writes for the mobile app
 import { ConvexError, v } from "convex/values";
-import { Doc } from "./_generated/dataModel";
-import { mutation, query, QueryCtx } from "./_generated/server";
+import { Doc, Id } from "./_generated/dataModel";
+import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { authz } from "./authz";
 import { isWithdrawal, signedAmount } from "./transactions";
@@ -198,5 +198,78 @@ export const update = mutation({
     }
     await ctx.db.patch(id, patch);
     return null;
+  },
+});
+
+// Largest ID photo accepted (bytes)
+export const MAX_ID_IMAGE_BYTES = 5 * 1024 * 1024;
+const idSide = v.union(v.literal("front"), v.literal("back"));
+
+/** True for an uploaded file usable as an ID photo: an image of at most MAX_ID_IMAGE_BYTES. */
+export function acceptableIdImage(file: { contentType?: string; size: number } | null) {
+  return !!file && !!file.contentType?.startsWith("image/") && file.size > 0 && file.size <= MAX_ID_IMAGE_BYTES;
+}
+
+/** The caller, checked for customers:verify_identity, and a customer of their branch. */
+async function requireIdEditor(ctx: MutationCtx, customerId: Id<"customers">) {
+  const caller = await requireUser(ctx);
+  if (!(await authz.can(ctx, caller._id, "customers:verify_identity"))) throw new ConvexError("FORBIDDEN");
+  const customer = await ctx.db.get(customerId);
+  if (!customer || customer.branchId !== caller.branchId) throw new ConvexError("FORBIDDEN");
+  return customer;
+}
+
+/** A one-time URL to upload an ID photo to (then pass the storage id to setIdImage). */
+export const generateIdUploadUrl = mutation({
+  args: { customerId: v.id("customers") },
+  handler: async (ctx, { customerId }) => {
+    await requireIdEditor(ctx, customerId);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
+ * Attach an uploaded photo as the front or back of the customer's ID
+ * document, replacing (and deleting) the previous one. Needs
+ * customers:verify_identity. A file that isn't an image or is over
+ * MAX_ID_IMAGE_BYTES is deleted and `"INVALID_IMAGE"` returned (not thrown:
+ * a throw would roll the delete back and leave the file in storage);
+ * `"ok"` otherwise.
+ */
+export const setIdImage = mutation({
+  args: { customerId: v.id("customers"), side: idSide, storageId: v.id("_storage") },
+  handler: async (ctx, { customerId, side, storageId }) => {
+    const customer = await requireIdEditor(ctx, customerId);
+    const file = await ctx.db.system.get(storageId);
+    if (!acceptableIdImage(file)) {
+      if (file) await ctx.storage.delete(storageId);
+      return "INVALID_IMAGE" as const;
+    }
+    const previous = customer.idImages?.[side];
+    if (previous && previous !== storageId) await ctx.storage.delete(previous);
+    await ctx.db.patch(customerId, { idImages: { ...customer.idImages, [side]: storageId } });
+    return "ok" as const;
+  },
+});
+
+/**
+ * Viewable URLs of the customer's ID photos, null for a side not provided.
+ * For the back office (transactions:audit or customers:verify_identity) of
+ * the customer's branch.
+ */
+export const idImages = query({
+  args: { customerId: v.id("customers") },
+  handler: async (ctx, { customerId }) => {
+    const caller = await requireUser(ctx);
+    const [audit, verify] = await Promise.all([
+      authz.can(ctx, caller._id, "transactions:audit"),
+      authz.can(ctx, caller._id, "customers:verify_identity"),
+    ]);
+    if (!audit && !verify) throw new ConvexError("FORBIDDEN");
+    const customer = await ctx.db.get(customerId);
+    if (!customer || customer.branchId !== caller.branchId) throw new ConvexError("FORBIDDEN");
+    const url = (id?: Id<"_storage">) => (id ? ctx.storage.getUrl(id) : Promise.resolve(null));
+    const [front, back] = await Promise.all([url(customer.idImages?.front), url(customer.idImages?.back)]);
+    return { front, back };
   },
 });

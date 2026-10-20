@@ -71,6 +71,11 @@ export default defineSchema({
     metadata: v.optional(v.any()), // Extra KYC info
     // Product the client holds, set from the dashboard (portfolio.ts)
     productId: v.optional(v.id("products")),
+    // Photos of the ID document, front and back (customers:setIdImage)
+    idImages: v.optional(v.object({
+      front: v.optional(v.id("_storage")),
+      back: v.optional(v.id("_storage")),
+    })),
   })
     .index("by_phone", ["phoneNumber"])
     .index("by_status", ["status"])
