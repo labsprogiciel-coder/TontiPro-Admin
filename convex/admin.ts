@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { query, QueryCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { authz } from "./authz";
+import { agentsOfDevice, devicesByUser } from "./deviceAccess";
 import { isWithdrawal, signedAmount } from "./transactions";
 import { requireUser } from "./users";
 
@@ -352,10 +353,11 @@ export const listAgents = query({
       ctx.db.query("devices").collect(),
     ]);
     const branches = byId(data.branches);
+    const deviceOf = await devicesByUser(ctx, devices);
 
     return Promise.all(
       data.users.map(async (u) => {
-        const device = devices.find((d) => d.assignedTo === u._id) ?? null;
+        const device = deviceOf.get(u._id) ?? null;
         const monthTx = data.transactions.filter(
           (t) =>
             t.agentId === u._id && t.status === "completed" && !t.imported && t.timestamp >= monthStart,
@@ -395,7 +397,7 @@ export const listAgents = query({
 });
 
 /**
- * The TPE fleet with assignee and last binding actor names: every device for
+ * The TPE fleet with its agents and last binding actor names: every device for
  * IT admins, the devices bound to the branch's staff for auditors.
  */
 export const listDevices = query({
@@ -407,29 +409,42 @@ export const listDevices = query({
       ctx.db.query("users").collect(),
     ]);
     const usersById = byId(users);
+    const agentsOf = new Map(
+      await Promise.all(devices.map(async (d) => [d._id as string, await agentsOfDevice(ctx, d)] as const)),
+    );
     const visible =
       scope === null
         ? devices
-        : devices.filter((d) => {
-            const owner = d.assignedTo ?? d.requestedBy;
-            return owner && usersById.get(owner)?.branchId === scope;
-          });
-    return visible.map((d) => ({
-      serial: d.serialNumber,
-      model: d.model,
-      status: d.status,
-      lastSync: d.lastSync,
-      // Last check-in report from the phone (devices:heartbeat), if any
-      telemetry: d.telemetry ?? null,
-      assignedTo: d.assignedTo ?? null,
-      assignee: d.assignedTo ? usersById.get(d.assignedTo)?.fullName ?? "—" : null,
-      boundBy: d.boundBy ? usersById.get(d.boundBy)?.fullName ?? "—" : null,
-      boundAt: d.boundAt ?? null,
-      // Pending "liaison" request from an agent's phone (devices:registerMine)
-      requestedBy: d.assignedTo ? null : d.requestedBy ?? null,
-      requester: !d.assignedTo && d.requestedBy ? usersById.get(d.requestedBy)?.fullName ?? "—" : null,
-      requestedAt: d.assignedTo ? null : d.requestedAt ?? null,
-    }));
+        : devices.filter((d) =>
+            [...agentsOf.get(d._id)!, ...(d.requestedBy ? [d.requestedBy] : [])].some(
+              (id) => usersById.get(id)?.branchId === scope,
+            ),
+          );
+    const name = (id: Id<"users">) => usersById.get(id)?.fullName ?? "—";
+    return visible.map((d) => {
+      const agents = agentsOf.get(d._id)!;
+      // A request from an agent already on the TPE is moot
+      const request = d.requestedBy && !agents.includes(d.requestedBy) ? d.requestedBy : null;
+      const reporter = d.telemetry?.reportedBy;
+      return {
+        serial: d.serialNumber,
+        model: d.model,
+        status: d.status,
+        lastSync: d.lastSync,
+        // Last check-in report from the phone (devices:heartbeat), if any
+        telemetry: d.telemetry ?? null,
+        // Agent signed in at that check-in
+        inUseBy: reporter ? { id: reporter as string, name: name(reporter) } : null,
+        // Agents allowed on this TPE (shared TPEs have several)
+        agents: agents.map((id) => ({ id: id as string, name: name(id) })),
+        boundBy: d.boundBy ? name(d.boundBy) : null,
+        boundAt: d.boundAt ?? null,
+        // Pending "liaison" request from an agent's phone (devices:registerMine)
+        requestedBy: request,
+        requester: request ? name(request) : null,
+        requestedAt: request ? d.requestedAt ?? null : null,
+      };
+    });
   },
 });
 
@@ -449,6 +464,7 @@ export const listReconciliations = query({
       ctx.db.query("devices").collect(),
     ]);
     const usersById = byId(users);
+    const deviceOf = await devicesByUser(ctx, devices);
 
     return recs.map((r) => {
       const dayStart = Date.parse(r.date + "T00:00:00Z");
@@ -460,7 +476,7 @@ export const listReconciliations = query({
           t.timestamp >= dayStart &&
           t.timestamp < dayStart + DAY,
       );
-      const device = devices.find((d) => d.assignedTo === r.agentId);
+      const device = deviceOf.get(r.agentId);
       return {
         id: r._id,
         agentId: r.agentId,
@@ -499,6 +515,7 @@ export const openSessions = query({
         .collect(),
       ctx.db.query("devices").collect(),
     ]);
+    const deviceOf = await devicesByUser(ctx, devices);
 
     const sessions = [];
     for (const u of users) {
@@ -515,7 +532,7 @@ export const openSessions = query({
         agentId: u._id as Id<"users">,
         agent: u.fullName,
         date: today,
-        tpe: devices.find((d) => d.assignedTo === u._id)?.serialNumber ?? "—",
+        tpe: deviceOf.get(u._id)?.serialNumber ?? "—",
         opened: Math.min(...txs.map((t) => t.timestamp)),
         txCount: txs.length,
         expected: txs.reduce((s, t) => s + signedAmount(t), 0),

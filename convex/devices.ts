@@ -1,11 +1,15 @@
 // convex/devices.ts — TPE ↔ agent binding (it_admin only, via devices:bind).
-// Agents' phones register themselves (registerMine) so the dashboard can
-// offer a one-click "Lier"; only an it_admin can actually bind.
+// A TPE can be shared by several agents (each signs in with their own
+// account); an agent has at most one TPE. Agents' phones register themselves
+// (registerMine) so the dashboard can offer a one-click "Lier"; only an
+// it_admin can actually bind.
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, Infer, v } from "convex/values";
-import { mutation, MutationCtx, query } from "./_generated/server";
+import { internalMutation, mutation, MutationCtx, query } from "./_generated/server";
 import { authz } from "./authz";
 import { geoFix } from "./schema";
+import { Doc, Id } from "./_generated/dataModel";
+import { agentsOfDevice, deviceOfUser } from "./deviceAccess";
 import { assignedDevice, requireUser } from "./users";
 
 /**
@@ -31,10 +35,25 @@ async function getDevice(ctx: MutationCtx, serialNumber: string) {
   return device;
 }
 
+// Agents sharing one TPE, at most
+export const MAX_AGENTS_PER_DEVICE = 6;
+
+/** Remove one agent's binding to a device (the assignment row and/or the legacy field). */
+async function removeAgent(ctx: MutationCtx, device: Doc<"devices">, userId: Id<"users">) {
+  const rows = await ctx.db
+    .query("deviceAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  for (const r of rows) if (r.deviceId === device._id) await ctx.db.delete(r._id);
+  if (device.assignedTo === userId) await ctx.db.patch(device._id, { assignedTo: undefined });
+}
+
 /**
- * Bind an active device to an active field agent or supervisor who has no
- * terminal, requiring devices:bind permission. Record the actor and time when the binding changes.
- * Return the device ID; an existing binding to the same user is a no-op.
+ * Let an active field agent or supervisor collect with an active device,
+ * requiring devices:bind. Several agents may share a TPE (up to
+ * MAX_AGENTS_PER_DEVICE); an agent keeps at most one TPE. Records the actor
+ * and time, and clears the agent's pending request on this device.
+ * Returns the device ID; binding an agent already on the device is a no-op.
  */
 export const bindDevice = mutation({
   args: { serialNumber: v.string(), userId: v.id("users") },
@@ -45,9 +64,10 @@ export const bindDevice = mutation({
     if (device.status !== "active") {
       throw new Error(`Device is ${device.status}; only active devices can be bound`);
     }
-    if (device.assignedTo === args.userId) return device._id;
-    if (device.assignedTo) {
-      throw new Error("Device is already bound to another agent; unbind it first");
+    const agents = await agentsOfDevice(ctx, device);
+    if (agents.includes(args.userId)) return device._id;
+    if (agents.length >= MAX_AGENTS_PER_DEVICE) {
+      throw new Error(`A TPE can be shared by ${MAX_AGENTS_PER_DEVICE} agents at most`);
     }
 
     const agent = await ctx.db.get(args.userId);
@@ -59,20 +79,22 @@ export const bindDevice = mutation({
     }
 
     // One terminal per agent, so every collection traces to a single device
-    const existing = await ctx.db
-      .query("devices")
-      .withIndex("by_assignee", (q) => q.eq("assignedTo", args.userId))
-      .first();
+    const existing = await deviceOfUser(ctx, args.userId);
     if (existing) {
       throw new Error(`Agent already has ${existing.serialNumber}; unbind it first`);
     }
 
-    await ctx.db.patch(device._id, {
-      assignedTo: args.userId,
+    const now = Date.now();
+    await ctx.db.insert("deviceAssignments", {
+      deviceId: device._id,
+      userId: args.userId,
       boundBy: actor._id,
-      boundAt: Date.now(),
-      requestedBy: undefined,
-      requestedAt: undefined,
+      boundAt: now,
+    });
+    await ctx.db.patch(device._id, {
+      boundBy: actor._id,
+      boundAt: now,
+      ...(device.requestedBy === args.userId ? { requestedBy: undefined, requestedAt: undefined } : {}),
     });
     return device._id;
   },
@@ -85,10 +107,11 @@ const SERIAL_PATTERN = /^[A-Z0-9][A-Z0-9 ._-]{2,49}$/;
  * device waiting to be bound to the signed-in agent, so it shows on the
  * dashboard as "Non affecté · demandé par …". It never binds anything itself.
  * Only active staff who can collect (field agents, supervisors) can register.
+ * A TPE already used by other agents can be requested too (shared TPE).
  * An agent has at most one pending request: a new serial replaces the old one,
  * and a device row that was only ever a request is deleted.
- * Returns "bound" (already bound to the caller), "pending", or throws
- * `SERIAL_TAKEN` when the serial is bound to someone else, `INVALID_SERIAL`.
+ * Returns "bound" (the caller already uses this TPE), "pending", or throws
+ * `INVALID_SERIAL`.
  */
 export const registerMine = mutation({
   args: { serialNumber: v.string(), model: v.string() },
@@ -105,8 +128,7 @@ export const registerMine = mutation({
       .query("devices")
       .withIndex("by_serial", (q) => q.eq("serialNumber", serialNumber))
       .unique();
-    if (device?.assignedTo === user._id) return "bound" as const;
-    if (device?.assignedTo) throw new ConvexError("SERIAL_TAKEN");
+    if (device && (await agentsOfDevice(ctx, device)).includes(user._id)) return "bound" as const;
 
     // Drop this agent's earlier requests for other serials
     const earlier = await ctx.db
@@ -114,9 +136,13 @@ export const registerMine = mutation({
       .withIndex("by_requester", (q) => q.eq("requestedBy", user._id))
       .collect();
     for (const old of earlier) {
-      if (old.serialNumber === serialNumber || old.assignedTo) continue;
-      if (old.boundBy) await ctx.db.patch(old._id, { requestedBy: undefined, requestedAt: undefined });
-      else await ctx.db.delete(old._id);
+      if (old.serialNumber === serialNumber) continue;
+      // A TPE that is or was bound stays; one that was only ever a request goes
+      if (old.boundBy || (await agentsOfDevice(ctx, old)).length > 0) {
+        await ctx.db.patch(old._id, { requestedBy: undefined, requestedAt: undefined });
+      } else {
+        await ctx.db.delete(old._id);
+      }
     }
 
     if (device) {
@@ -136,22 +162,52 @@ export const registerMine = mutation({
 });
 
 /**
- * Remove a device's assignment with devices:bind permission and record the
- * actor and time. Return the device ID; an unassigned device is a no-op.
+ * Stop an agent (`userId`) from using a device, or every agent when `userId`
+ * is omitted, with devices:bind permission. Records the actor and time.
+ * Returns the device ID; an agent not on the device is a no-op.
  */
 export const unbindDevice = mutation({
-  args: { serialNumber: v.string() },
+  args: { serialNumber: v.string(), userId: v.optional(v.id("users")) },
   handler: async (ctx, args) => {
     const actor = await requireBinder(ctx);
     const device = await getDevice(ctx, args.serialNumber);
-    if (!device.assignedTo) return device._id;
+    const agents = await agentsOfDevice(ctx, device);
+    const leaving = args.userId ? agents.filter((a) => a === args.userId) : agents;
+    if (leaving.length === 0) return device._id;
 
-    await ctx.db.patch(device._id, {
-      assignedTo: undefined,
-      boundBy: actor._id,
-      boundAt: Date.now(),
-    });
+    for (const userId of leaving) await removeAgent(ctx, device, userId);
+    await ctx.db.patch(device._id, { boundBy: actor._id, boundAt: Date.now() });
     return device._id;
+  },
+});
+
+/**
+ * One-off: move legacy single bindings (devices.assignedTo) into
+ * deviceAssignments. Idempotent; run after deploying the shared-TPE schema
+ * (the CI runs it after each production deploy).
+ */
+export const migrateAssignments = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let moved = 0;
+    for (const d of await ctx.db.query("devices").collect()) {
+      if (!d.assignedTo) continue;
+      const already = await ctx.db
+        .query("deviceAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", d.assignedTo!))
+        .first();
+      if (!already) {
+        await ctx.db.insert("deviceAssignments", {
+          deviceId: d._id,
+          userId: d.assignedTo,
+          boundBy: d.boundBy ?? d.assignedTo,
+          boundAt: d.boundAt ?? d._creationTime,
+        });
+        moved++;
+      }
+      await ctx.db.patch(d._id, { assignedTo: undefined });
+    }
+    return { moved };
   },
 });
 
@@ -194,9 +250,10 @@ const short = (max: number) => (s: string | undefined) =>
 
 /**
  * Check-in from the agent's phone (every ~15 min while the app is open):
- * stamps lastSync and stores what the phone reports. Only the agent the
- * device is bound to can report for it; anything else is ignored, so a
- * phone that was unbound meanwhile doesn't error in a loop.
+ * stamps lastSync and stores what the phone reports, with the agent signed
+ * in (`reportedBy`, for shared TPEs). Only an agent allowed on the device can
+ * report for it; anything else is ignored, so a phone that was unbound
+ * meanwhile doesn't error in a loop.
  */
 export const heartbeat = mutation({
   args: {
@@ -221,7 +278,7 @@ export const heartbeat = mutation({
       .query("devices")
       .withIndex("by_serial", (q) => q.eq("serialNumber", serialNumber.trim().toUpperCase()))
       .unique();
-    if (!device || device.assignedTo !== user._id) return "ignored" as const;
+    if (!device || !(await agentsOfDevice(ctx, device)).includes(user._id)) return "ignored" as const;
 
     const battery =
       report.battery !== undefined && Number.isFinite(report.battery)
@@ -252,6 +309,7 @@ export const heartbeat = mutation({
         emulator: report.emulator,
         locationDenied: report.locationDenied,
         location: cleanFix(report.location),
+        reportedBy: user._id,
       },
     });
     return "ok" as const;

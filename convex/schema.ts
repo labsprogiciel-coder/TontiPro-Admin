@@ -85,6 +85,9 @@ export default defineSchema({
   devices: defineTable({
     serialNumber: v.string(), // Hardcoded TPE Serial
     model: v.string(),
+    // Legacy single binding. Agents now live in deviceAssignments (several per
+    // TPE); devices:migrateAssignments moves this over, and reads fall back to
+    // it until then (deviceAccess.ts)
     assignedTo: v.optional(v.id("users")),
     boundBy: v.optional(v.id("users")), // Last it_admin to bind/unbind
     boundAt: v.optional(v.number()),
@@ -111,11 +114,24 @@ export default defineSchema({
       // Location permission refused: transactions then carry no position
       locationDenied: v.optional(v.boolean()),
       location: v.optional(geoFix),
+      // Agent signed in on the phone at that check-in (shared TPEs)
+      reportedBy: v.optional(v.id("users")),
     })),
   })
     .index("by_serial", ["serialNumber"])
     .index("by_assignee", ["assignedTo"])
     .index("by_requester", ["requestedBy"]),
+
+  // Agents allowed to collect with a TPE: several per TPE (shared terminals),
+  // at most one TPE per agent so each movement traces to a single device
+  deviceAssignments: defineTable({
+    deviceId: v.id("devices"),
+    userId: v.id("users"),
+    boundBy: v.id("users"),
+    boundAt: v.number(),
+  })
+    .index("by_device", ["deviceId"])
+    .index("by_user", ["userId"]),
 
   // 5. CASH COLLECTIONS (Transactions)
   transactions: defineTable({

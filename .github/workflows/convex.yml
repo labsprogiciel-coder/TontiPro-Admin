@@ -99,3 +99,9 @@ jobs:
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
         run: npx convex run users:syncRolePermissions
+      # Shared TPEs: move legacy single bindings (devices.assignedTo) into deviceAssignments; idempotent
+      - name: Migrate device assignments
+        if: steps.latest.outputs.stale != 'true'
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: npx convex run devices:migrateAssignments
