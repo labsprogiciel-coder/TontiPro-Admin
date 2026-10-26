@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { authz } from "./authz";
+import { deviceOfUser } from "./deviceAccess";
 
 export const ROLE = v.union(
   v.literal("field_agent"),
@@ -95,14 +96,12 @@ export async function requireUser(ctx: QueryCtx) {
 }
 
 /**
- * The terminal bound to a staff member (one at most), as the mobile app needs
- * it to check it runs on that TPE, or null. Serial format: BRAND-MODEL-INSTALLID.
+ * The terminal a staff member may collect with (one at most, possibly shared
+ * with other agents), as the mobile app needs it to check it runs on that
+ * TPE, or null. Serial format: BRAND-MODEL-INSTALLID.
  */
 export async function assignedDevice(ctx: QueryCtx, userId: Id<"users">) {
-  const device = await ctx.db
-    .query("devices")
-    .withIndex("by_assignee", (q) => q.eq("assignedTo", userId))
-    .first();
+  const device = await deviceOfUser(ctx, userId);
   return device ? { serialNumber: device.serialNumber, model: device.model, status: device.status } : null;
 }
 

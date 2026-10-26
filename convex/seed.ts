@@ -88,24 +88,25 @@ export const seedDatabase = internalMutation({
     const tpe1 = await ctx.db.insert("devices", {
       serialNumber: "TPE-BF-0041",
       model: "Ingenico iWL250",
-      assignedTo: agent1,
       status: "active",
       lastSync: Date.now() - 1000 * 60 * 30, // 30 min ago
     });
     const tpe2 = await ctx.db.insert("devices", {
       serialNumber: "TPE-BF-0042",
       model: "Ingenico iWL250",
-      assignedTo: agent2,
       status: "active",
       lastSync: Date.now() - 1000 * 60 * 45,
     });
-    await ctx.db.insert("devices", {
+    const tpe3 = await ctx.db.insert("devices", {
       serialNumber: "TPE-BF-0043",
       model: "PAX A920",
-      assignedTo: agentBobo,
       status: "active",
       lastSync: Date.now() - 1000 * 60 * 60,
     });
+    // Who may collect with each TPE (a TPE can be shared; one TPE per agent)
+    for (const [deviceId, userId] of [[tpe1, agent1], [tpe2, agent2], [tpe3, agentBobo]] as const) {
+      await ctx.db.insert("deviceAssignments", { deviceId, userId, boundBy: itAdmin, boundAt: Date.now() });
+    }
     await ctx.db.insert("devices", {
       serialNumber: "TPE-BF-0099",
       model: "Ingenico iWL250",

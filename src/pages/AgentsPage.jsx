@@ -105,10 +105,14 @@ function PhoneCell({ t }) {
   )
 }
 
+// Mirrors MAX_AGENTS_PER_DEVICE (convex/devices.ts): agents sharing one TPE
+const MAX_AGENTS_PER_DEVICE = 6
+
 /**
- * One terminal row. Who it is assigned to (and the binding request or audit
- * line) sits in "Affecté à"; the Lier / Délier controls sit in the last,
- * right-aligned column. The mutations enforce devices:bind.
+ * One terminal row. The agents allowed on it (a TPE can be shared), who was
+ * signed in at the last check-in, and any binding request sit in "Affecté à";
+ * the Lier / Délier controls sit in the last, right-aligned column. The
+ * mutations enforce devices:bind.
  */
 function FleetRow({ device, agents, canBind }) {
   const bind   = useMutation(api.devices.bindDevice)
@@ -125,47 +129,76 @@ function FleetRow({ device, agents, canBind }) {
     finally { setBusy(false) }
   }
 
-  /** Ask for confirmation before removing the displayed device's assignment. */
-  const onUnbind = () => {
-    if (window.confirm(`Délier ${device.serial} de ${device.assignee} ? L'agent ne pourra plus encaisser avec ce TPE.`)) {
-      run(() => unbind({ serialNumber: device.serial }))
+  /** Ask for confirmation before removing one agent from the device. */
+  const onUnbind = (agent) => {
+    if (window.confirm(`Délier ${agent.name} de ${device.serial} ? Cet agent ne pourra plus encaisser avec ce TPE.`)) {
+      run(() => unbind({ serialNumber: device.serial, userId: agent.id }))
     }
   }
 
+  const bound = device.agents ?? []
+  const full = bound.length >= MAX_AGENTS_PER_DEVICE
   // Mirrors bindDevice: active field agents / supervisors without a terminal
   const eligible = agents.filter(a => a.status === "active" && a.canCollect && !a.device)
   // A phone registered this serial and waits for a binding (shown whatever
   // the requester's state); `requester` is set only when they can be bound
-  const pending = !device.assignedTo && !!device.requestedBy
-  const requester = canBind && pending && device.status === "active"
+  const pending = !!device.requestedBy
+  const requester = canBind && pending && device.status === "active" && !full
     ? eligible.find(a => a.id === device.requestedBy) ?? null
     : null
 
   let assignee
-  if (device.assignedTo) assignee = <span style={{ fontWeight: 550 }}>{device.assignee}</span>
-  else if (pending) assignee = <span className="tag attente">Demande de liaison · {device.requester ?? "agent inconnu"}</span>
-  else if (device.status !== "active") assignee = <span className="cell-sub">Non affecté · appareil indisponible</span>
-  else assignee = <span className="cell-sub">Non affecté</span>
+  if (bound.length) {
+    assignee = (
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {bound.map(a => (
+          <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontWeight: 550 }}>{a.name}</span>
+            {device.inUseBy?.id === a.id && bound.length > 1 && (
+              <span className="tag actif" title="Agent connecté lors du dernier contact du téléphone">connecté</span>
+            )}
+          </div>
+        ))}
+        {bound.length > 1 && <span className="cell-sub">TPE partagé · {bound.length} agents</span>}
+      </div>
+    )
+  } else if (device.status !== "active") assignee = <span className="cell-sub">Non affecté · appareil indisponible</span>
+  else if (!pending) assignee = <span className="cell-sub">Non affecté</span>
+
+  // Délier: a button for a single agent, a picker when the TPE is shared
+  let unbindControl = null
+  if (canBind && bound.length === 1) {
+    unbindControl = <button className="btn sm" style={{ color: "var(--neg)" }} disabled={busy} onClick={() => onUnbind(bound[0])}>Délier</button>
+  } else if (canBind && bound.length > 1) {
+    unbindControl = (
+      <select className="filter-select" aria-label={`Délier un agent de ${device.serial}`} value="" disabled={busy}
+        style={{ color: "var(--neg)" }}
+        onChange={e => { const a = bound.find(x => x.id === e.target.value); if (a) onUnbind(a) }}>
+        <option value="">Délier un agent…</option>
+        {bound.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+    )
+  }
 
   let actions = null
   if (canBind) {
-    if (device.assignedTo) {
-      actions = <button className="btn sm" style={{ color: "var(--neg)" }} disabled={busy} onClick={onUnbind}>Délier</button>
-    } else if (requester) {
+    if (requester) {
       actions = (
         <button className="btn brand sm" disabled={busy}
           onClick={() => run(() => bind({ serialNumber: device.serial, userId: requester.id }))}>Lier à {requester.name}</button>
       )
-    } else if (device.status === "active") {
+    } else if (device.status === "active" && !full) {
       actions = <>
         <select className="filter-select" aria-label={`Agent pour ${device.serial}`} value={userId}
           onChange={e => setUserId(e.target.value)} disabled={busy}>
-          <option value="">{eligible.length ? "Choisir un agent…" : "Aucun agent disponible"}</option>
+          <option value="">{eligible.length ? (bound.length ? "Ajouter un agent…" : "Choisir un agent…") : "Aucun agent disponible"}</option>
           {eligible.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
         <button className="btn sm" disabled={busy || !userId}
-          onClick={() => run(() => bind({ serialNumber: device.serial, userId }))}>Lier</button>
+          onClick={() => run(() => bind({ serialNumber: device.serial, userId }))}>{bound.length ? "Ajouter" : "Lier"}</button>
       </>
+    } else if (full) {
+      actions = <span className="cell-sub">{MAX_AGENTS_PER_DEVICE} agents au maximum</span>
     }
   }
 
@@ -176,17 +209,22 @@ function FleetRow({ device, agents, canBind }) {
       <td>
         {assignee}
         {pending && (
-          <div className="cell-sub" style={{ marginTop: 2 }}>
-            {device.status !== "active"
-              ? "Appareil indisponible : remettez-le en service avant de le lier"
-              : canBind && !requester
-                ? "Cet agent ne peut pas être lié (suspendu, sans droit d'encaissement ou déjà équipé)"
-                : `Téléphone enregistré ${relTime(device.requestedAt)} · vérifiez que le numéro affiché sur son écran est le même`}
+          <div style={{ marginTop: bound.length ? 6 : 0 }}>
+            <span className="tag attente">Demande de liaison · {device.requester ?? "agent inconnu"}</span>
+            <div className="cell-sub" style={{ marginTop: 2 }}>
+              {device.status !== "active"
+                ? "Appareil indisponible : remettez-le en service avant de le lier"
+                : full
+                  ? `Déjà ${MAX_AGENTS_PER_DEVICE} agents sur ce TPE : déliez-en un d'abord`
+                  : canBind && !requester
+                    ? "Cet agent ne peut pas être lié (suspendu, sans droit d'encaissement ou déjà équipé)"
+                    : `Téléphone enregistré ${relTime(device.requestedAt)} · vérifiez que le numéro affiché sur son écran est le même`}
+            </div>
           </div>
         )}
         {canBind && device.boundBy && !pending && (
           <div className="cell-sub" style={{ marginTop: 2 }}>
-            {device.assignedTo ? "Lié" : "Délié"} par {device.boundBy} · {relTime(device.boundAt)}
+            Modifié par {device.boundBy} · {relTime(device.boundAt)}
           </div>
         )}
       </td>
@@ -195,7 +233,10 @@ function FleetRow({ device, agents, canBind }) {
       <td><AlertsCell d={device}/></td>
       <td className="cell-sub">{relTime(device.lastSync)}</td>
       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{actions}</div>
+        <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          {actions && <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{actions}</div>}
+          {unbindControl}
+        </div>
         {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 11.5, marginTop: 4 }}>{String(error)}</div>}
       </td>
     </tr>
@@ -242,7 +283,7 @@ export default function AgentsPage() {
   // Binding requests first (oldest first), then devices with alerts
   const needle = q.trim().toLowerCase()
   const shownFleet = needle
-    ? fleet.filter(d => [d.serial, d.model, d.assignee].some(x => (x ?? "").toLowerCase().includes(needle)))
+    ? fleet.filter(d => [d.serial, d.model, d.requester, ...(d.agents ?? []).map(a => a.name)].some(x => (x ?? "").toLowerCase().includes(needle)))
     : fleet
   const sortedFleet = [...shownFleet].sort((a, b) =>
     (a.requestedBy ? 0 : 1) - (b.requestedBy ? 0 : 1) || (a.requestedAt ?? 0) - (b.requestedAt ?? 0) ||
