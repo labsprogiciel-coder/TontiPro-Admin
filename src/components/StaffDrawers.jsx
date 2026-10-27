@@ -93,8 +93,91 @@ export function NewStaffDrawer({ onClose, onCreated }) {
 }
 
 /**
- * Role, activation or password reset code, and suspension for one staff member.
- * Role and status controls are disabled on the admin's own account.
+ * Name, email, phone and branch of a staff member, read-only until "Modifier".
+ * The password keeps working after an email or phone change (staff.update).
+ */
+function DetailsSection({ staff }) {
+  const branches = useQuery(api.staff.listBranches)
+  const update   = useMutation(api.staff.update)
+  const [form, setForm]   = useState(null) // editing when set
+  const [busy, setBusy]   = useState(false)
+  const [error, setError] = useState(null)
+  const [saved, setSaved] = useState(false)
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const edit = () => {
+    setForm({ fullName: staff.name, email: staff.email, phoneNumber: staff.phone ?? "", branchId: staff.branchId })
+    setError(null); setSaved(false)
+  }
+  const onSubmit = async (e) => {
+    e.preventDefault()
+    setBusy(true); setError(null)
+    try {
+      await update({ userId: staff.id, ...form })
+      setForm(null); setSaved(true)
+    } catch (err) { setError(errorMessage(err)) }
+    finally { setBusy(false) }
+  }
+
+  if (!form) {
+    return (
+      <div className="drawer-section">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div className="card-title">Informations</div>
+          <button className="btn sm" onClick={edit}>Modifier</button>
+        </div>
+        <dl className="field-grid">
+          <div className="span-2"><dt>Nom</dt><dd>{staff.name}</dd></div>
+          <div className="span-2"><dt>Email</dt><dd>{staff.email}</dd></div>
+          <div><dt>Téléphone</dt><dd>{staff.phone ?? "—"}</dd></div>
+          <div><dt>Agence</dt><dd>{staff.branch}</dd></div>
+        </dl>
+        {saved && <div className="cell-sub" role="status" style={{ marginTop: 8 }}>Modifications enregistrées.</div>}
+      </div>
+    )
+  }
+
+  const contactChanged = form.email.trim().toLowerCase() !== staff.email || form.phoneNumber !== (staff.phone ?? "")
+  return (
+    <form className="drawer-section" onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="card-title">Informations</div>
+      <label className="field">
+        <span className="field-label">Nom complet</span>
+        <input className="input" required value={form.fullName} onChange={set("fullName")} autoFocus />
+      </label>
+      <label className="field">
+        <span className="field-label">Email professionnel</span>
+        <input className="input" type="email" required value={form.email} onChange={set("email")} />
+      </label>
+      <label className="field">
+        <span className="field-label">Téléphone</span>
+        <input className="input" type="tel" required value={form.phoneNumber} onChange={set("phoneNumber")} placeholder="+226 …" />
+      </label>
+      <label className="field">
+        <span className="field-label">Agence</span>
+        <select className="input" required value={form.branchId} onChange={set("branchId")}>
+          {(branches ?? []).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      </label>
+      {contactChanged && staff.activated && (
+        <div className="cell-sub">
+          Le mot de passe ne change pas : la personne se connecte avec le nouvel email ou le nouveau numéro.
+          Sur l&apos;application, un nouveau numéro demande de choisir à nouveau le code PIN.
+        </div>
+      )}
+      {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" className="btn" onClick={() => setForm(null)} disabled={busy}>Annuler</button>
+        <button type="submit" className="btn brand" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer"}</button>
+      </div>
+    </form>
+  )
+}
+
+/**
+ * Details, role, activation or password reset code, and suspension for one
+ * staff member. Role and status controls are disabled on the admin's own
+ * account; details can be edited on it.
  */
 export function StaffDrawer({ userId, onClose }) {
   const staff     = useQuery(api.staff.get, { userId })
@@ -139,6 +222,8 @@ export function StaffDrawer({ userId, onClose }) {
           {staff.roles.map(r => <span key={r} className="chip">{roleLabel(r)}</span>)}
         </div>
       </div>
+
+      <DetailsSection staff={staff} />
 
       {locked && (
         <div className="cell-sub" style={{ padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8 }}>
