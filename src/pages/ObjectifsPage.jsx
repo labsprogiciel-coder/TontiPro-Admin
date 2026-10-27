@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { downloadCsv, errorMessage, fmt, initials, keyActivate, KPI, PageHeader, PageSkeleton, SearchInput } from '../components'
+import { downloadCsv, errorMessage, fmt, initials, SortHead, keyActivate, KPI, PageHeader, PageSkeleton, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 import { useDialog } from '../components/useDialog'
@@ -321,17 +321,7 @@ export default function ObjectifsPage() {
     if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc")
     else { setSortBy(col); setSortDir("desc") }
   }
-  const SortHead = ({ col, children, align }) => (
-    <th style={{ textAlign: align || "left" }}
-        aria-sort={sortBy === col ? (sortDir === "asc" ? "ascending" : "descending") : undefined}>
-      <button type="button" className="sort-btn" onClick={() => toggleSort(col)}>
-        {children}
-        <span aria-hidden="true" style={{ opacity: sortBy === col ? 1 : 0.25, fontSize: 9 }}>
-          {sortBy === col ? (sortDir === "asc" ? "▲" : "▼") : "▾"}
-        </span>
-      </button>
-    </th>
-  )
+  const sort = { sortBy, sortDir, onSort: toggleSort }
 
   const exportCsv = () => downloadCsv(
     `objectifs-${toInputDate(Date.now())}.csv`,
@@ -411,13 +401,13 @@ export default function ObjectifsPage() {
           <table className="data-table obj-table">
             <thead>
               <tr>
-                <SortHead col="client">Client</SortHead>
-                <SortHead col="category">Motif</SortHead>
+                <SortHead {...sort} col="client">Client</SortHead>
+                <SortHead {...sort} col="category">Motif</SortHead>
                 <th style={{ width: "26%" }}>Progression</th>
-                <SortHead col="current" align="right">Épargne</SortHead>
-                <SortHead col="monthly" align="right">Cadence 30 j</SortHead>
-                <SortHead col="daysLeft">Échéance</SortHead>
-                <SortHead col="status">Statut</SortHead>
+                <SortHead {...sort} col="current" align="right">Épargne</SortHead>
+                <SortHead {...sort} col="monthly" align="right">Cadence 30 j</SortHead>
+                <SortHead {...sort} col="daysLeft">Échéance</SortHead>
+                <SortHead {...sort} col="status">Statut</SortHead>
                 <th style={{ width: 30 }}></th>
               </tr>
             </thead>

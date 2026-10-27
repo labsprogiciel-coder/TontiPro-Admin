@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { errorMessage, fmt, fmtDateTime, initials, pressable, relTime, KPI, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
+import { errorMessage, fmt, fmtDateTime, initials, SortHead, pressable, relTime, KPI, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import IdDocument from '../components/IdDocument'
 import ClientProfile from '../components/ClientProfile'
@@ -176,17 +176,7 @@ export default function ClientsPage() {
     if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc")
     else { setSortBy(col); setSortDir("desc") }
   }
-  const SortHead = ({ col, children, align }) => (
-    <th style={{ textAlign: align || "left" }}
-        aria-sort={sortBy === col ? (sortDir === "asc" ? "ascending" : "descending") : undefined}>
-      <button type="button" className="sort-btn" onClick={() => toggleSort(col)}>
-        {children}
-        <span aria-hidden="true" style={{ opacity: sortBy === col ? 1 : 0.25, fontSize: 9 }}>
-          {sortBy === col ? (sortDir === "asc" ? "▲" : "▼") : "▾"}
-        </span>
-      </button>
-    </th>
-  )
+  const sort = { sortBy, sortDir, onSort: toggleSort }
 
   const counts = {
     tous:    CLIENTS.length,
@@ -280,14 +270,14 @@ export default function ClientsPage() {
               <thead>
                 <tr>
                   <th style={{ width: 36 }}><input type="checkbox" checked={allOn} onChange={toggleAll} aria-label="Sélectionner tous les clients affichés" /></th>
-                  <SortHead col="name">Client</SortHead>
-                  <SortHead col="village">Village</SortHead>
-                  <SortHead col="branch">Agence</SortHead>
-                  <SortHead col="balance" align="right">Solde</SortHead>
-                  <SortHead col="monthlyAvg" align="right">Ce mois</SortHead>
-                  <SortHead col="txCount" align="right">Mvts</SortHead>
-                  <SortHead col="agent">Agent</SortHead>
-                  <SortHead col="status">Statut</SortHead>
+                  <SortHead {...sort} col="name">Client</SortHead>
+                  <SortHead {...sort} col="village">Village</SortHead>
+                  <SortHead {...sort} col="branch">Agence</SortHead>
+                  <SortHead {...sort} col="balance" align="right">Solde</SortHead>
+                  <SortHead {...sort} col="monthlyAvg" align="right">Ce mois</SortHead>
+                  <SortHead {...sort} col="txCount" align="right">Mvts</SortHead>
+                  <SortHead {...sort} col="agent">Agent</SortHead>
+                  <SortHead {...sort} col="status">Statut</SortHead>
                   <th style={{ width: 30 }}></th>
                 </tr>
               </thead>

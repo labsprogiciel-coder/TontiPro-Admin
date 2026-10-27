@@ -127,6 +127,25 @@ export function downloadCsv(filename, header, rows) {
 /**
  * French message for a server error: known ConvexError codes and server messages are mapped, anything else gets a generic message.
  */
+/**
+ * Sortable column header. Declared here, not inside a page, so re-sorting
+ * keeps the same button mounted and keyboard focus stays on it.
+ */
+export function SortHead({ col, sortBy, sortDir, onSort, align, children }) {
+  const on = sortBy === col
+  return (
+    <th style={{ textAlign: align || "left" }}
+        aria-sort={on ? (sortDir === "asc" ? "ascending" : "descending") : undefined}>
+      <button type="button" className="sort-btn" onClick={() => onSort(col)}>
+        {children}
+        <span aria-hidden="true" style={{ opacity: on ? 1 : 0.25, fontSize: 9 }}>
+          {on ? (sortDir === "asc" ? "▲" : "▼") : "▾"}
+        </span>
+      </button>
+    </th>
+  )
+}
+
 /** Enter/Space run `fn` on a focusable element that isn't a button (table row). */
 export function keyActivate(fn) {
   return {

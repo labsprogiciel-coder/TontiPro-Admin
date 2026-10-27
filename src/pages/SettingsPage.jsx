@@ -51,6 +51,8 @@ export default function SettingsPage() {
   const [autoLock, setAutoLock] = useState(5)
   const [notif, setNotif] = useState({ deposit: true, withdraw: true, lowBattery: true, syncFail: true, weekly: false })
   const [bgSync, setBgSync] = useState(true)
+  const [blockOfflineWithdrawals, setBlockOfflineWithdrawals] = useState(true)
+  const [autoExport, setAutoExport] = useState(true)
   const [offlineDays, setOfflineDays] = useState(3)
   const [isEditing, setIsEditing] = useState(false)
   const sections = [
@@ -149,7 +151,7 @@ export default function SettingsPage() {
                 <Field label={`Durée maximale hors-ligne · ${offlineDays} jours`} sub="Au-delà, le TPE refuse de nouveaux mouvements jusqu'à sync.">
                   <input type="range" min={1} max={14} value={offlineDays} onChange={e => setOfflineDays(+e.target.value)} style={{ width: "100%" }}/>
                 </Field>
-                <Toggle label="Bloquer les retraits hors-ligne" sub="Recommandé. Les dépôts restent autorisés." value={true} onChange={() => {}}/>
+                <Toggle label="Bloquer les retraits hors-ligne" sub="Recommandé. Les dépôts restent autorisés." value={blockOfflineWithdrawals} onChange={setBlockOfflineWithdrawals}/>
               </SetCard>
 
               <SetCard title="Plafonds par transaction" sub="Limites appliquées au TPE; les superviseurs peuvent valider au-delà.">
@@ -192,7 +194,7 @@ export default function SettingsPage() {
                     <option>12 mois</option><option>24 mois</option><option>36 mois</option><option>60 mois</option>
                   </select>
                 </Field>
-                <Toggle label="Exporter automatiquement vers le coffre" sub="Sauvegarde chiffrée chaque dimanche à 02:00." value={true} onChange={() => {}}/>
+                <Toggle label="Exporter automatiquement vers le coffre" sub="Sauvegarde chiffrée chaque dimanche à 02:00." value={autoExport} onChange={setAutoExport}/>
               </SetCard>
             </>
           )}
