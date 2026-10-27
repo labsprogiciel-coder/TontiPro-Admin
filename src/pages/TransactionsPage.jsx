@@ -6,6 +6,7 @@ import Novu from '../components/Inbox'
 import { errorMessage, fmt, fmtDateTime, fmtDuration, initials, mapUrl, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import { ImportButton } from '../components/ImportDialog'
+import { useDialog } from '../components/useDialog'
 
 const PERIODS = { "24h": 1, "7j": 7, "30j": 30, "Tout": null }
 
@@ -53,17 +54,18 @@ function TxDrawer({ tx, onClose, can }) {
   const canApprove = can.approve && tx.kind === "disbursement" && tx.status === "en attente"
   const canReverse = can.reverse && tx.kind === "transaction" && tx.status === "validée"
   const onApprove = () => run(() => approve({ disbursementId: tx.id }))
+  const ref = useDialog(onClose)
   return (
     <>
       <div className="drawer-scrim" onClick={onClose}/>
-      <aside className="drawer">
+      <aside className="drawer" role="dialog" aria-modal="true" aria-label={`${tx.label} — ${tx.client}`} ref={ref} tabIndex={-1}>
         <div className="drawer-head">
           <div>
             <div style={{ fontSize: 11, color: "var(--ink-3)", fontFamily: "var(--font-mono)" }}>{tx.id}</div>
             <div style={{ fontWeight: 600, fontSize: 18, letterSpacing: "-0.015em", marginTop: 2 }}>{tx.label} — {tx.client}</div>
             <div className="cell-sub" style={{ marginTop: 2 }}>{fmtDateTime(tx.timestamp)} · {tx.agent}</div>
           </div>
-          <button className="btn ghost sm" onClick={onClose} style={{ padding: 6 }}>✕</button>
+          <button className="btn ghost sm" onClick={onClose} style={{ padding: 6 }} aria-label="Fermer">✕</button>
         </div>
         <div className="drawer-body">
           <div style={{
@@ -78,7 +80,7 @@ function TxDrawer({ tx, onClose, can }) {
               <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 500 }}>Montant</div>
               <div style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.025em", fontVariantNumeric: "tabular-nums",
                             color: tx.type === "in" ? "var(--pos)" : "var(--neg)" }}>
-                {tx.type === "in" ? "+" : "−"}{fmt(tx.amount)}<span style={{ fontSize: 13, marginLeft: 6, fontWeight: 500, opacity: 0.8 }}>FCFA</span>
+                {tx.type === "in" ? "+" : "−"}{fmt(tx.amount)}<span style={{ fontSize: 13, marginLeft: 6, fontWeight: 500 }}>FCFA</span>
               </div>
             </div>
           </div>
@@ -229,7 +231,7 @@ export default function TransactionsPage() {
         <SearchInput placeholder="Client, ID, TPE…" value={q} onChange={e => setQ(e.target.value)} />
         <div className="seg">
           {["24h","7j","30j","Tout"].map(p => (
-            <button key={p} className={period === p ? "on" : ""} onClick={() => setPeriod(p)}>{p}</button>
+            <button key={p} aria-pressed={period === p} className={period === p ? "on" : ""} onClick={() => setPeriod(p)}>{p}</button>
           ))}
         </div>
         <button className="btn"><I.Export size={14}/>Exporter CSV</button>
@@ -243,24 +245,24 @@ export default function TransactionsPage() {
               { k: "out",     label: "Décaissements", n: counts.out },
               { k: "pending", label: "En attente", n: counts.pending },
             ].map(t => (
-              <button key={t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
+              <button key={t.k} aria-pressed={seg === t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
                 {t.label}<span className="seg-count">{t.n}</span>
               </button>
             ))}
           </div>
           <div className="filter-spacer"/>
-          <div className="filter-group">
-            <label className="filter-label">Canal</label>
+          <label className="filter-group">
+            <span className="filter-label">Canal</span>
             <select className="filter-select" value={channel} onChange={e => setChannel(e.target.value)}>
               {channels.map(c => <option key={c} value={c}>{c === "tous" ? "Tous" : c}</option>)}
             </select>
-          </div>
-          <div className="filter-group">
-            <label className="filter-label">Agent</label>
+          </label>
+          <label className="filter-group">
+            <span className="filter-label">Agent</span>
             <select className="filter-select" value={agent} onChange={e => setAgent(e.target.value)}>
               {agents.map(a => <option key={a} value={a}>{a === "tous" ? "Tous" : a}</option>)}
             </select>
-          </div>
+          </label>
         </div>
 
         <div className="bulk-bar" style={{ background: "var(--surface-2)" }}>
@@ -323,7 +325,7 @@ export default function TransactionsPage() {
                       <span className="cell-sub" style={{ marginLeft: 4, fontWeight: 400 }}>FCFA</span>
                     </td>
                     <td><span className={"tag " + st.cls}>{st.label}</span></td>
-                    <td><button className="btn ghost sm" style={{ padding: 4 }} onClick={e => { e.stopPropagation(); setSelected(t) }}><I.Arrow size={12}/></button></td>
+                    <td><button className="btn ghost sm" style={{ padding: 4 }} aria-label={`Détails de la transaction ${t.id}`} onClick={e => { e.stopPropagation(); setSelected(t) }}><I.Arrow size={12}/></button></td>
                   </tr>
                 )
               })}

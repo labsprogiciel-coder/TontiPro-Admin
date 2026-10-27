@@ -127,6 +127,24 @@ export function downloadCsv(filename, header, rows) {
 /**
  * French message for a server error: known ConvexError codes and server messages are mapped, anything else gets a generic message.
  */
+/** Enter/Space run `fn` on a focusable element that isn't a button (table row). */
+export function keyActivate(fn) {
+  return {
+    tabIndex: 0,
+    onClick: fn,
+    onKeyDown: (e) => {
+      if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return
+      e.preventDefault()
+      fn()
+    },
+  }
+}
+
+/** A card that opens something: a named button for keyboard and screen readers. */
+export function pressable(fn, label) {
+  return { role: "button", "aria-label": label, ...keyActivate(fn) }
+}
+
 export function errorMessage(e) {
   if (typeof e?.data === "string" && ERROR_MESSAGES[e.data]) return ERROR_MESSAGES[e.data]
   const text = String(e?.data ?? e?.message ?? "")
@@ -311,12 +329,13 @@ export function Sidebar({ active, setActive }) {
         <div className="nav-group" key={group.group}>
           <div className="nav-label">{group.group}</div>
           {group.entries.map(it => (
-            <div key={it.id}
+            <button key={it.id} type="button"
                  className={"nav-item" + (active === it.id ? " active" : "")}
+                 aria-current={active === it.id ? "page" : undefined}
                  onClick={() => setActive(it.id)}>
               {it.icon}<span>{it.label}</span>
               {it.badge && <span className="nav-badge">{it.badge}</span>}
-            </div>
+            </button>
           ))}
         </div>
       ))}
@@ -463,7 +482,7 @@ export function VolumeChart({ data }) {
         </div>
         <div className="seg">
           {["3m","6m","12m"].map(r => (
-            <button key={r} className={range === r ? "on" : ""} onClick={() => setRange(r)}>{r}</button>
+            <button key={r} aria-pressed={range === r} className={range === r ? "on" : ""} onClick={() => setRange(r)}>{r}</button>
           ))}
         </div>
       </div>

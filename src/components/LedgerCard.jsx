@@ -51,7 +51,7 @@ export default function LedgerCard() {
           <div>
             Dernier contrôle {relTime(check.at)} : {check.accounts} compte{check.accounts > 1 ? "s" : ""} client
             {check.unposted > 0 && <> · {check.unposted} mouvement{check.unposted > 1 ? "s" : ""} pas encore dans le grand livre</>}
-            {check.error && <div style={{ color: "var(--neg)" }}>{check.error}</div>}
+            {check.error && <div role="alert" style={{ color: "var(--neg)" }}>{check.error}</div>}
           </div>
         ) : (
           <div className="cell-sub">Le premier contrôle des soldes a lieu cette nuit.</div>

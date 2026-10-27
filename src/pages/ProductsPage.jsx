@@ -4,6 +4,7 @@ import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { downloadCsv, errorMessage, fmt, KPI, PageHeader, PageSkeleton, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
+import { useDialog } from '../components/useDialog'
 
 const PRODUCT_FAMILIES = [
   { k: "epargne",   label: "Épargne",        color: "var(--brand)",         icon: "Wallet" },
@@ -133,7 +134,7 @@ export default function ProductsPage() {
           const Ic = I[f.icon]
           return (
             <button key={f.k}
-                    className={"family-tile " + (fam === f.k ? "on" : "")}
+                    aria-pressed={fam === f.k} className={"family-tile " + (fam === f.k ? "on" : "")}
                     onClick={() => setFam(fam === f.k ? "toutes" : f.k)}>
               <span className="family-icon" style={{ background: f.color }}>
                 <Ic size={16} stroke="white"/>
@@ -158,22 +159,22 @@ export default function ProductsPage() {
               { k: "brouillon", label: "Brouillons",n: counts.brouillon },
               { k: "archive",   label: "Archivés",  n: counts.archive },
             ].map(t => (
-              <button key={t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
+              <button key={t.k} aria-pressed={seg === t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
                 {t.label}<span className="seg-count">{t.n}</span>
               </button>
             ))}
           </div>
           <div className="filter-spacer"/>
-          <div className="filter-group">
-            <label className="filter-label">Famille</label>
+          <label className="filter-group">
+            <span className="filter-label">Famille</span>
             <select className="filter-select" value={fam} onChange={e => setFam(e.target.value)}>
               <option value="toutes">Toutes</option>
               {PRODUCT_FAMILIES.map(f => <option key={f.k} value={f.k}>{f.label}</option>)}
             </select>
-          </div>
+          </label>
           <div className="seg">
-            <button className={view === "cards" ? "on" : ""} onClick={() => setView("cards")}>Cartes</button>
-            <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>Tableau</button>
+            <button aria-pressed={view === "cards"} className={view === "cards" ? "on" : ""} onClick={() => setView("cards")}>Cartes</button>
+            <button aria-pressed={view === "table"} className={view === "table" ? "on" : ""} onClick={() => setView("table")}>Tableau</button>
           </div>
         </div>
 
@@ -237,7 +238,7 @@ export default function ProductsPage() {
                       </td>
                       <td><span className={"tag " + sm.class}>{sm.label}</span></td>
                       <td>
-                        <button className="btn ghost sm" style={{ padding: 4 }}
+                        <button className="btn ghost sm" style={{ padding: 4 }} aria-label={`Modifier ${p.name}`}
                           onClick={e => { e.stopPropagation(); setEditor({ mode: "edit", product: p }) }}>
                           <I.Arrow size={12}/>
                         </button>
@@ -333,6 +334,7 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const branchName = (id) => branches.find(b => b.id === id)?.name ?? "—"
+  const ref = useDialog(onClose)
 
   const onSave = async (product) => {
     setBusy(true)
@@ -365,7 +367,7 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
   return (
     <>
       <div className="drawer-scrim" onClick={onClose}/>
-      <div className="drawer prod-drawer">
+      <div className="drawer prod-drawer" role="dialog" aria-modal="true" aria-label={isNew ? "Nouveau produit" : p.name} ref={ref} tabIndex={-1}>
         <div className="drawer-head">
           <div>
             <div style={{ fontWeight: 600, fontSize: 15 }}>
@@ -373,14 +375,14 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
             </div>
             <div className="cell-sub">{isNew ? "Créer un produit financier" : `Code : ${p.code}`}</div>
           </div>
-          <button className="btn ghost sm" onClick={onClose}><I.Plus size={14} style={{ transform: "rotate(45deg)" }}/></button>
+          <button className="btn ghost sm" onClick={onClose} aria-label="Fermer"><I.Plus size={14} style={{ transform: "rotate(45deg)" }}/></button>
         </div>
 
         <div className="prod-tabs">
           {EDITOR_TABS.map(t => {
             const TIc = I[t.icon]
             return (
-              <button key={t.k} className={"prod-tab " + (tab === t.k ? "on" : "")} onClick={() => setTab(t.k)}>
+              <button key={t.k} type="button" aria-pressed={tab === t.k} className={"prod-tab " + (tab === t.k ? "on" : "")} onClick={() => setTab(t.k)}>
                 <TIc size={14}/>{t.label}
               </button>
             )
@@ -390,13 +392,13 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
         <div className="drawer-body">
           {tab === "identite" && (
             <>
-              <div className="field">
-                <label className="field-label">Famille</label>
+              <div className="field" role="group" aria-label="Famille">
+                <span className="field-label">Famille</span>
                 <div className="family-radio">
                   {PRODUCT_FAMILIES.map(fam => {
                     const FIc = I[fam.icon]
                     return (
-                      <button key={fam.k} className={"family-radio-tile " + (p.family === fam.k ? "on" : "")}
+                      <button key={fam.k} type="button" aria-pressed={p.family === fam.k} className={"family-radio-tile " + (p.family === fam.k ? "on" : "")}
                               onClick={() => set("family", fam.k)}>
                         <span className="prod-glyph" style={{ background: fam.color, width: 26, height: 26 }}>
                           <FIc size={13} stroke="white"/>
@@ -408,55 +410,55 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
                 </div>
               </div>
 
-              <div className="field">
-                <label className="field-label">Nom du produit</label>
+              <label className="field">
+                <span className="field-label">Nom du produit</span>
                 <input className="input" value={p.name} onChange={e => set("name", e.target.value)} placeholder="Ex : Épargne solidaire"/>
-              </div>
+              </label>
 
-              <div className="field">
-                <label className="field-label">Code interne</label>
+              <label className="field">
+                <span className="field-label">Code interne</span>
                 <input className="input" value={p.code} onChange={e => set("code", e.target.value.toUpperCase())} placeholder="Ex : SOLID-01" style={{ fontFamily: "var(--font-mono)" }}/>
-              </div>
+              </label>
 
-              <div className="field">
-                <label className="field-label">Description courte</label>
+              <label className="field">
+                <span className="field-label">Description courte</span>
                 <textarea className="input" value={p.summary} onChange={e => set("summary", e.target.value)} placeholder="Résumé visible sur la carte produit…"/>
-              </div>
+              </label>
 
-              <div className="field">
-                <label className="field-label">Statut</label>
+              <label className="field">
+                <span className="field-label">Statut</span>
                 <select className="input" value={p.status} onChange={e => set("status", e.target.value)}>
                   <option value="brouillon">Brouillon</option>
                   <option value="actif">Actif</option>
                   <option value="archive">Archivé</option>
                 </select>
-              </div>
+              </label>
 
-              <div className="field">
-                <label className="field-label">Niveau KYC requis</label>
+              <label className="field">
+                <span className="field-label">Niveau KYC requis</span>
                 <select className="input" value={p.kycLevel} onChange={e => set("kycLevel", e.target.value)}>
                   {KYC_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
                 </select>
-              </div>
+              </label>
             </>
           )}
 
           {tab === "conditions" && (
             <>
-              <div className="field">
-                <label className="field-label">Taux d'intérêt annuel (%)</label>
+              <label className="field">
+                <span className="field-label">Taux d'intérêt annuel (%)</span>
                 <input className="input" type="number" min="0" step="0.1" value={p.rate}
                        onChange={e => set("rate", parseFloat(e.target.value) || 0)}/>
-              </div>
+              </label>
 
-              <div className="field">
-                <label className="field-label">Durée (mois)</label>
+              <div className="field" role="group" aria-label="Durée (mois)">
+                <span className="field-label">Durée (mois)</span>
                 <div className="dur-row">
                   <div className="input-row">
-                    <input className="input" type="number" min="0" placeholder="Min" value={p.durationMin}
+                    <input className="input" type="number" min="0" placeholder="Min" aria-label="Durée minimum (mois)" value={p.durationMin}
                            onChange={e => set("durationMin", parseInt(e.target.value) || 0)}/>
                     <span style={{ color: "var(--ink-3)" }}>—</span>
-                    <input className="input" type="number" min="0" placeholder="Max" value={p.durationMax}
+                    <input className="input" type="number" min="0" placeholder="Max" aria-label="Durée maximum (mois)" value={p.durationMax}
                            onChange={e => set("durationMax", parseInt(e.target.value) || 0)}/>
                   </div>
                   <span className="chip">{dur}</span>
@@ -464,45 +466,45 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
                 <div className="cell-sub" style={{ marginTop: 4 }}>Mettre 0 / 0 pour une durée libre.</div>
               </div>
 
-              <div className="field">
-                <label className="field-label">Dépôt minimum d'ouverture (FCFA)</label>
+              <label className="field">
+                <span className="field-label">Dépôt minimum d'ouverture (FCFA)</span>
                 <input className="input" type="number" min="0" value={p.minDeposit}
                        onChange={e => set("minDeposit", parseInt(e.target.value) || 0)}/>
-              </div>
+              </label>
 
-              <div className="field">
-                <label className="field-label">Plafond de solde (FCFA — 0 = illimité)</label>
+              <label className="field">
+                <span className="field-label">Plafond de solde (FCFA — 0 = illimité)</span>
                 <input className="input" type="number" min="0" value={p.maxBalance}
                        onChange={e => set("maxBalance", parseInt(e.target.value) || 0)}/>
-              </div>
+              </label>
 
-              <div className="field">
-                <label className="field-label">Frais d'ouverture</label>
+              <div className="field" role="group" aria-label="Frais d'ouverture">
+                <span className="field-label">Frais d'ouverture</span>
                 <div className="input-row">
-                  <input className="input" type="number" min="0" step="0.1" value={p.fees}
+                  <input className="input" type="number" min="0" step="0.1" value={p.fees} aria-label="Montant des frais"
                          onChange={e => set("fees", parseFloat(e.target.value) || 0)}/>
-                  <select className="input" style={{ width: 90 }} value={p.feesUnit} onChange={e => set("feesUnit", e.target.value)}>
+                  <select className="input" style={{ width: 90 }} aria-label="Unité des frais" value={p.feesUnit} onChange={e => set("feesUnit", e.target.value)}>
                     <option value="FCFA">FCFA</option>
                     <option value="%">%</option>
                   </select>
                 </div>
               </div>
 
-              <div className="field">
-                <label className="field-label">Délai de grâce (jours)</label>
+              <label className="field">
+                <span className="field-label">Délai de grâce (jours)</span>
                 <input className="input" type="number" min="0" value={p.grace}
                        onChange={e => set("grace", parseInt(e.target.value) || 0)}/>
-              </div>
+              </label>
             </>
           )}
 
           {tab === "distribution" && (
             <>
-              <div className="field">
-                <label className="field-label">Agences habilitées</label>
+              <div className="field" role="group" aria-label="Agences habilitées">
+                <span className="field-label">Agences habilitées</span>
                 <div className="chip-picker">
                   {branches.map(b => (
-                    <button key={b.id} className={"chip-pick " + (p.branchIds.includes(b.id) ? "on" : "")}
+                    <button key={b.id} type="button" aria-pressed={p.branchIds.includes(b.id)} className={"chip-pick " + (p.branchIds.includes(b.id) ? "on" : "")}
                             onClick={() => toggleArr("branchIds", b.id)}>
                       {p.branchIds.includes(b.id) && <I.Check size={12}/>}{b.name}
                     </button>
@@ -510,11 +512,11 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
                 </div>
               </div>
 
-              <div className="field">
-                <label className="field-label">Cibles clients</label>
+              <div className="field" role="group" aria-label="Cibles clients">
+                <span className="field-label">Cibles clients</span>
                 <div className="chip-picker">
                   {ALL_TARGETS.map(t => (
-                    <button key={t} className={"chip-pick " + (p.targets.includes(t) ? "on" : "")}
+                    <button key={t} type="button" aria-pressed={p.targets.includes(t)} className={"chip-pick " + (p.targets.includes(t) ? "on" : "")}
                             onClick={() => toggleArr("targets", t)}>
                       {p.targets.includes(t) && <I.Check size={12}/>}{t}
                     </button>
@@ -522,11 +524,11 @@ function ProductEditor({ mode, initial, branches, readOnly, onClose }) {
                 </div>
               </div>
 
-              <div className="field">
-                <label className="field-label">Applications partenaires</label>
+              <div className="field" role="group" aria-label="Applications partenaires">
+                <span className="field-label">Applications partenaires</span>
                 <div className="chip-picker">
                   {ALL_CHANNELS.map(c => (
-                    <button key={c.k} className={"chip-pick " + (p.channels.includes(c.k) ? "on" : "")}
+                    <button key={c.k} type="button" aria-pressed={p.channels.includes(c.k)} className={"chip-pick " + (p.channels.includes(c.k) ? "on" : "")}
                             onClick={() => toggleArr("channels", c.k)}>
                       {p.channels.includes(c.k) && <I.Check size={12}/>}{c.label}
                     </button>

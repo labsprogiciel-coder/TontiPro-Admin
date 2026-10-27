@@ -149,7 +149,7 @@ export default function ImportDialog({ initialKind = "backup", onClose }) {
         <div className="card-head">
           <div className="seg">
             {Object.entries(KINDS).map(([k, v]) => (
-              <button key={k} className={kind === k ? "on" : ""} onClick={() => switchKind(k)} disabled={busy}>{v.label}</button>
+              <button key={k} aria-pressed={kind === k} className={kind === k ? "on" : ""} onClick={() => switchKind(k)} disabled={busy}>{v.label}</button>
             ))}
           </div>
           <div className="filter-spacer"/>
@@ -272,7 +272,7 @@ export default function ImportDialog({ initialKind = "backup", onClose }) {
                 <span style={{ color: errors ? "var(--neg)" : undefined }}><strong>{errors}</strong> en erreur</span>
               </div>
               {run.error && (
-                <div style={{ color: "var(--neg)", fontSize: 13, marginTop: 10 }}>
+                <div role="alert" style={{ color: "var(--neg)", fontSize: 13, marginTop: 10 }}>
                   Import interrompu : {run.error} Les lignes déjà importées sont enregistrées ; relancez le même fichier pour continuer.
                 </div>
               )}

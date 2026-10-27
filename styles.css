@@ -17,8 +17,9 @@
   /* Text */
   --ink: oklch(0.22 0.012 70);
   --ink-2: oklch(0.42 0.012 70);
-  --ink-3: oklch(0.58 0.012 70);
-  --ink-4: oklch(0.72 0.012 70);
+  /* ink-3/ink-4 are text colours: at least 4.5:1 on every light surface */
+  --ink-3: oklch(0.5 0.012 70);
+  --ink-4: oklch(0.53 0.012 70);
 
   /* Mizo brand (brand/README.md) */
   --brand: #D85A30;
@@ -29,12 +30,14 @@
   --brand-coin: #FFC46B;
 
   /* Semantic */
-  --pos: oklch(0.55 0.11 155);
+  --pos: oklch(0.48 0.11 155);
   --pos-soft: oklch(0.95 0.04 155);
-  --neg: oklch(0.58 0.16 30);
+  --neg: oklch(0.5 0.16 30);
   --neg-soft: oklch(0.96 0.04 35);
   --warn: oklch(0.72 0.13 75);
+  --warn-ink: oklch(0.5 0.11 70); /* warning as text: 4.5:1 on light surfaces */
   --info: oklch(0.62 0.1 230);
+  --info-ink: oklch(0.48 0.1 230); /* info as text: 4.5:1 on info-soft */
   --info-soft: oklch(0.96 0.025 230);
 
   /* Type */
@@ -459,7 +462,7 @@ a { color: inherit; text-decoration: none; }
 .tx-amount { text-align: right; font-weight: 600; font-size: 13.5px; font-variant-numeric: tabular-nums; }
 .tx-amount.in { color: var(--pos); }
 .tx-amount.out { color: var(--neg); }
-.tx-amount .u { font-size: 11px; font-weight: 500; opacity: 0.8; margin-left: 2px; }
+.tx-amount .u { font-size: 11px; font-weight: 500; margin-left: 2px; }
 
 /* === Chart === */
 .chart-wrap { padding: 8px 18px 18px; }
@@ -1072,7 +1075,7 @@ textarea.input { font-family: inherit; resize: vertical; min-height: 64px; }
   width: 6px; height: 6px; border-radius: 50%; background: currentColor;
   box-shadow: 0 0 0 3px color-mix(in oklab, currentColor 22%, transparent);
 }
-.rec-status.open       { background: var(--info-soft);  color: var(--info);  border-color: transparent; }
+.rec-status.open       { background: var(--info-soft);  color: var(--info-ink);  border-color: transparent; }
 .rec-status.variance   { background: var(--neg-soft);   color: var(--neg);   border-color: transparent; }
 .rec-status.resolved   { background: oklch(0.95 0.05 80); color: oklch(0.5 0.11 80); border-color: transparent; }
 .rec-status.signed     { background: var(--pos-soft);   color: var(--pos);   border-color: transparent; }
@@ -1422,3 +1425,34 @@ textarea.input { font-family: inherit; resize: vertical; min-height: 64px; }
 .menu-item.danger:hover:not(:disabled), .menu-item.danger:focus-visible { background: var(--neg-soft); }
 .menu-sep { height: 1px; margin: 4px 2px; background: var(--border); }
 .menu-empty { padding: 8px; font-size: 12.5px; color: var(--ink-3); }
+
+/* === Accessibility === */
+/* One visible keyboard focus ring everywhere (WCAG 2.4.7) */
+:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 2px; }
+.input:focus-visible, .ledger-input:focus-visible, .recon-notes:focus-visible,
+.search:focus-within, .denom-step input:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 1px; }
+.search input:focus-visible { outline: none; }
+.drawer:focus, .main:focus { outline: none; }
+/* Clickable rows and cards reached with Tab */
+tr[tabindex]:focus-visible, .client-card:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
+
+/* Controls that became <button>: keep their look */
+button.nav-item, button.toggle-row, .sort-btn {
+  width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: left;
+}
+button.nav-item { color: var(--ink-2); }
+button.nav-item.active { color: var(--ink); }
+button.toggle-row { border: 1px solid var(--border-subtle); background: var(--surface); }
+.sort-btn {
+  display: inline-flex; gap: 4px; align-items: center; width: auto; padding: 0;
+  cursor: pointer; user-select: none; text-transform: inherit; letter-spacing: inherit; font-weight: inherit;
+}
+label.filter-group { cursor: default; }
+
+/* Skip link: hidden until focused with Tab */
+.skip-link {
+  position: absolute; left: 12px; top: -48px; z-index: 100;
+  padding: 8px 14px; border-radius: var(--r-sm);
+  background: var(--brand-strong); color: white; font-weight: 600; text-decoration: none;
+}
+.skip-link:focus { top: 12px; }

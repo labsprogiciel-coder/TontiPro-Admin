@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { downloadCsv, errorMessage, fmt, initials, KPI, PageHeader, PageSkeleton, SearchInput } from '../components'
+import { downloadCsv, errorMessage, fmt, initials, keyActivate, KPI, PageHeader, PageSkeleton, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
+import { useDialog } from '../components/useDialog'
 
 const OBJ_STATUSES = {
   atteint:   { label: "Atteint",       dot: "var(--pos)" },
@@ -58,6 +59,7 @@ function GoalEditor({ goal, candidates, onClose }) {
   const [deadline, setDeadline] = useState(toInputDate(goal?.deadline))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const ref = useDialog(onClose)
 
   const run = async (fn) => {
     setBusy(true)
@@ -80,7 +82,7 @@ function GoalEditor({ goal, candidates, onClose }) {
   return (
     <>
       <div className="drawer-scrim" onClick={onClose}/>
-      <aside className="drawer">
+      <aside className="drawer" role="dialog" aria-modal="true" aria-label={isNew ? "Nouvel objectif" : `Objectif de ${goal.client}`} ref={ref} tabIndex={-1}>
         <div className="drawer-head">
           <div>
             <div style={{ fontWeight: 600, fontSize: 15 }}>{isNew ? "Nouvel objectif" : goal.client}</div>
@@ -88,40 +90,40 @@ function GoalEditor({ goal, candidates, onClose }) {
               {isNew ? "Fixer un objectif d'épargne à un client" : `Épargne actuelle : ${fmt(goal.current)} FCFA`}
             </div>
           </div>
-          <button className="btn ghost sm" onClick={onClose} style={{ padding: 6 }}>✕</button>
+          <button className="btn ghost sm" onClick={onClose} style={{ padding: 6 }} aria-label="Fermer">✕</button>
         </div>
         <div className="drawer-body">
           {isNew && (
-            <div className="field">
-              <label className="field-label">Client</label>
+            <label className="field">
+              <span className="field-label">Client</span>
               <select className="input" value={customerId} onChange={e => setCustomerId(e.target.value)}>
                 <option value="">Choisir un client…</option>
                 {candidates.map(c => <option key={c.id} value={c.id}>{c.name} · {c.phone}</option>)}
               </select>
               {candidates.length === 0 && <div className="cell-sub" style={{ marginTop: 4 }}>Tous les clients de l'agence ont déjà un objectif.</div>}
-            </div>
+            </label>
           )}
-          <div className="field">
-            <label className="field-label">Montant à atteindre (FCFA)</label>
+          <label className="field">
+            <span className="field-label">Montant à atteindre (FCFA)</span>
             <input className="input" inputMode="numeric" value={target} placeholder="Ex : 250000"
                    onChange={e => setTarget(e.target.value.replace(/[^\d\s]/g, ""))}/>
-          </div>
-          <div className="field">
-            <label className="field-label">Motif</label>
+          </label>
+          <label className="field">
+            <span className="field-label">Motif</span>
             <input className="input" list="goal-categories" value={category} maxLength={40}
                    placeholder="Scolarité, Logement…" onChange={e => setCategory(e.target.value)}/>
             <datalist id="goal-categories">
               {CATEGORIES.map(c => <option key={c} value={c}/>)}
             </datalist>
-          </div>
-          <div className="field">
-            <label className="field-label">Échéance (facultatif)</label>
+          </label>
+          <label className="field">
+            <span className="field-label">Échéance (facultatif)</span>
             <input className="input" type="date" value={deadline} min={toInputDate(Date.now())}
                    onChange={e => setDeadline(e.target.value)}/>
             <div className="cell-sub" style={{ marginTop: 4 }}>
               Sans échéance, le statut reste « En cours » : il n'y a pas de rythme à comparer.
             </div>
-          </div>
+          </label>
           {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
         </div>
         <div className="drawer-foot">
@@ -320,13 +322,14 @@ export default function ObjectifsPage() {
     else { setSortBy(col); setSortDir("desc") }
   }
   const SortHead = ({ col, children, align }) => (
-    <th onClick={() => toggleSort(col)} style={{ textAlign: align || "left", cursor: "pointer", userSelect: "none" }}>
-      <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+    <th style={{ textAlign: align || "left" }}
+        aria-sort={sortBy === col ? (sortDir === "asc" ? "ascending" : "descending") : undefined}>
+      <button type="button" className="sort-btn" onClick={() => toggleSort(col)}>
         {children}
-        <span style={{ opacity: sortBy === col ? 1 : 0.25, fontSize: 9 }}>
+        <span aria-hidden="true" style={{ opacity: sortBy === col ? 1 : 0.25, fontSize: 9 }}>
           {sortBy === col ? (sortDir === "asc" ? "▲" : "▼") : "▾"}
         </span>
-      </span>
+      </button>
     </th>
   )
 
@@ -384,24 +387,24 @@ export default function ObjectifsPage() {
               { k: "enretard", label: "En retard",  n: counts.enretard },
               { k: "enpause",  label: "En pause",   n: counts.enpause },
             ].map(t => (
-              <button key={t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
+              <button key={t.k} aria-pressed={seg === t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
                 {t.label}<span className="seg-count">{t.n}</span>
               </button>
             ))}
           </div>
           <div className="filter-spacer"/>
-          <div className="filter-group">
-            <label className="filter-label">Motif</label>
+          <label className="filter-group">
+            <span className="filter-label">Motif</span>
             <select className="filter-select" value={cat} onChange={e => setCat(e.target.value)}>
               {cats.map(a => <option key={a} value={a}>{a === "toutes" ? "Tous" : a}</option>)}
             </select>
-          </div>
-          <div className="filter-group">
-            <label className="filter-label">Agent</label>
+          </label>
+          <label className="filter-group">
+            <span className="filter-label">Agent</span>
             <select className="filter-select" value={agent} onChange={e => setAgent(e.target.value)}>
               {agents.map(a => <option key={a} value={a}>{a === "tous" ? "Tous les agents" : a}</option>)}
             </select>
-          </div>
+          </label>
         </div>
 
         <div className="table-wrap">
@@ -422,7 +425,8 @@ export default function ObjectifsPage() {
               {paged.rows.map(o => {
                 const st = statusOf(o)
                 return (
-                  <tr key={o.id} onClick={() => canEdit && setEditor({ goal: o })} style={{ cursor: canEdit ? "pointer" : undefined }}>
+                  <tr key={o.id} style={{ cursor: canEdit ? "pointer" : undefined }}
+                      {...(canEdit ? keyActivate(() => setEditor({ goal: o })) : {})}>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <div className="avatar sm">{initials(o.client)}</div>
