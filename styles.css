@@ -1367,3 +1367,58 @@ textarea.input { font-family: inherit; resize: vertical; min-height: 64px; }
 .profile-form label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .profile-form label > span { font-size: 11.5px; color: var(--ink-3); }
 .profile-form .input { width: 100%; }
+
+/* Dropdown menu (components/Menu.jsx) */
+.menu-pop {
+  position: fixed;
+  z-index: 60;
+  min-width: 220px;
+  max-width: 300px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  text-align: left;
+  white-space: normal;
+  display: flex;
+  flex-direction: column;
+}
+.menu-list { max-height: 280px; min-height: 0; overflow-y: auto; }
+.menu-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12.5px;
+}
+.menu-label {
+  padding: 6px 8px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--surface-inset); outline: none; }
+.menu-item:disabled { color: var(--ink-3); cursor: default; }
+.menu-item.danger { color: var(--neg); }
+.menu-item.danger:hover:not(:disabled), .menu-item.danger:focus-visible { background: var(--neg-soft); }
+.menu-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+.menu-empty { padding: 8px; font-size: 12.5px; color: var(--ink-3); }

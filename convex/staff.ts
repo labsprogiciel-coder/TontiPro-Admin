@@ -58,6 +58,7 @@ export const get = query({
       email: user.email,
       phone: user.phoneNumber,
       branch: branch?.name ?? "—",
+      branchId: user.branchId,
       status: user.status,
       roles: roles.map((r) => r.role),
       activated: !!account,
@@ -106,6 +107,75 @@ export const create = mutation({
     });
     await authz.assignRole(ctx, userId, args.role);
     return userId;
+  },
+});
+
+/**
+ * Edit a staff member's details: name, email, phone, branch (only the fields
+ * given). Same validation as `create`; email and phone stay unique. The
+ * password account is keyed on the email, so an email change moves it along
+ * and the person keeps signing in with their password (phone sign-in looks
+ * the email up). Allowed on the caller's own account: nothing here can lock
+ * an admin out.
+ */
+export const update = mutation({
+  args: {
+    userId: v.id("users"),
+    fullName: v.optional(v.string()),
+    email: v.optional(v.string()),
+    phoneNumber: v.optional(v.string()),
+    branchId: v.optional(v.id("branches")),
+  },
+  handler: async (ctx, args) => {
+    await requireStaffAdmin(ctx);
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new ConvexError("NOT_FOUND");
+    const patch: { fullName?: string; email?: string; phoneNumber?: string; branchId?: Id<"branches"> } = {};
+
+    if (args.fullName !== undefined) {
+      const fullName = args.fullName.trim();
+      if (!fullName) throw new ConvexError("NAME_REQUIRED");
+      if (fullName !== user.fullName) patch.fullName = fullName;
+    }
+    if (args.email !== undefined) {
+      const email = args.email.trim().toLowerCase();
+      if (!EMAIL_RE.test(email)) throw new ConvexError("INVALID_EMAIL");
+      if (email !== user.email) {
+        const other = await ctx.db
+          .query("users")
+          .withIndex("email", (q) => q.eq("email", email))
+          .first();
+        if (other && other._id !== user._id) throw new ConvexError("EMAIL_TAKEN");
+        patch.email = email;
+      }
+    }
+    if (args.phoneNumber !== undefined) {
+      if (!args.phoneNumber.trim()) throw new ConvexError("PHONE_REQUIRED");
+      const phoneNumber = normalizeStaffPhone(args.phoneNumber);
+      if (!phoneNumber) throw new ConvexError("INVALID_PHONE");
+      if (phoneNumber !== user.phoneNumber) {
+        const other = await ctx.db
+          .query("users")
+          .withIndex("by_phone", (q) => q.eq("phoneNumber", phoneNumber))
+          .first();
+        if (other && other._id !== user._id) throw new ConvexError("PHONE_TAKEN");
+        patch.phoneNumber = phoneNumber;
+      }
+    }
+    if (args.branchId !== undefined && args.branchId !== user.branchId) {
+      if (!(await ctx.db.get(args.branchId))) throw new ConvexError("BRANCH_NOT_FOUND");
+      patch.branchId = args.branchId;
+    }
+
+    if (patch.email) {
+      const account = await ctx.db
+        .query("authAccounts")
+        .withIndex("userIdAndProvider", (q) => q.eq("userId", user._id).eq("provider", "password"))
+        .first();
+      if (account) await ctx.db.patch(account._id, { providerAccountId: patch.email });
+    }
+    if (Object.keys(patch).length) await ctx.db.patch(user._id, patch);
+    return Object.keys(patch);
   },
 });
 

@@ -10,19 +10,23 @@ export const ROLE_OPTIONS = [
   { value: "accountant",  label: "Comptable" },
   { value: "it_admin",    label: "Admin IT" },
 ]
-/** French label for a role key. */
-const roleLabel = (r) => ROLE_OPTIONS.find(o => o.value === r)?.label ?? r
 
-/** Side drawer shell with title, scrim and optional footer. */
-function Drawer({ title, sub, onClose, children, foot }) {
+/** Side drawer shell with title, scrim, optional avatar and badges next to the title, and optional footer. */
+function Drawer({ title, sub, onClose, children, foot, avatar, badges }) {
   return (
     <>
       <div className="drawer-scrim" onClick={onClose}/>
       <aside className="drawer" role="dialog" aria-label={title}>
         <div className="drawer-head">
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 18, letterSpacing: "-0.015em" }}>{title}</div>
-            {sub && <div className="cell-sub" style={{ marginTop: 2 }}>{sub}</div>}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            {avatar}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 600, fontSize: 18, letterSpacing: "-0.015em" }}>{title}</span>
+                {badges}
+              </div>
+              {sub && <div className="cell-sub" style={{ marginTop: 2 }}>{sub}</div>}
+            </div>
           </div>
           <button className="btn ghost sm" onClick={onClose} style={{ padding: 6 }} aria-label="Fermer">✕</button>
         </div>
@@ -93,16 +97,21 @@ export function NewStaffDrawer({ onClose, onCreated }) {
 }
 
 /**
- * Role, activation or password reset code, and suspension for one staff member.
- * Role and status controls are disabled on the admin's own account.
+ * Details (name, email, phone, branch) and role, saved together with one
+ * Enregistrer / Annuler bar that appears once something changed; then the
+ * activation or password reset code and suspension. Role and status are
+ * locked on the admin's own account; details can be edited on it.
  */
 export function StaffDrawer({ userId, onClose }) {
   const staff     = useQuery(api.staff.get, { userId })
+  const branches  = useQuery(api.staff.listBranches)
+  const update    = useMutation(api.staff.update)
   const setRole   = useMutation(api.staff.setRole)
   const setStatus = useMutation(api.staff.setStatus)
   const issueActivation = useMutation(api.staff.issueActivationCode)
   const issueReset      = useMutation(api.staff.issueResetCode)
-  const [role, setRoleDraft] = useState(null)
+  const [draft, setDraft]   = useState({}) // edited fields only
+  const [saved, setSaved]   = useState(false)
   const [issued, setIssued]  = useState(null) // { code, expiresAt }: shown once
   const [confirmSuspend, setConfirmSuspend] = useState(false)
   const [busy, setBusy]   = useState(false)
@@ -113,7 +122,19 @@ export function StaffDrawer({ userId, onClose }) {
   if (staff === null) return <Drawer title="Introuvable" onClose={onClose}><div className="cell-sub">Ce compte n'existe plus.</div></Drawer>
 
   const currentRole = staff.roles[0] ?? ""
-  const draftRole   = role ?? currentRole
+  const initial = {
+    fullName: staff.name, email: staff.email, phoneNumber: staff.phone ?? "",
+    branchId: staff.branchId, role: currentRole,
+  }
+  const values  = { ...initial, ...draft }
+  const changed = Object.keys(draft).filter(k => draft[k] !== initial[k])
+  const dirty   = changed.length > 0
+  // Locked while saving, so nothing typed meanwhile is lost when the draft clears
+  const field   = (k) => ({
+    value: values[k],
+    disabled: busy,
+    onChange: (e) => { setSaved(false); setDraft(d => ({ ...d, [k]: e.target.value })) },
+  })
   const suspended   = staff.status !== "active"
   const locked      = staff.isSelf
 
@@ -125,41 +146,84 @@ export function StaffDrawer({ userId, onClose }) {
   const reset     = staff.activated
   const issueCode = reset ? issueReset : issueActivation
   const screen    = reset ? "Mot de passe oublié" : "Première connexion"
+  const discard = () => { setDraft({}); setError(null) }
+  const save = (e) => {
+    e?.preventDefault()
+    run(async () => {
+      const details = Object.fromEntries(changed.filter(k => k !== "role").map(k => [k, values[k]]))
+      if (Object.keys(details).length) await update({ userId, ...details })
+      if (changed.includes("role") && values.role) await setRole({ userId, role: values.role })
+      setDraft({}); setSaved(true)
+    })
+  }
+  const contactChanged = staff.activated && (changed.includes("email") || changed.includes("phoneNumber"))
+
   const copy = async () => {
     try { await navigator.clipboard.writeText(issued.code); setCopied(true) } catch { /* clipboard blocked */ }
   }
 
   return (
-    <Drawer title={staff.name} sub={`${staff.email} · ${staff.branch}`} onClose={onClose}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div className="avatar lg">{initials(staff.name)}</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <span className={"tag " + (suspended ? "archive" : "actif")}>{suspended ? "Suspendu" : "Actif"}</span>
-          <span className={"tag " + (staff.activated ? "actif" : "attente")}>{staff.activated ? "Compte activé" : "Non activé"}</span>
-          {staff.roles.map(r => <span key={r} className="chip">{roleLabel(r)}</span>)}
+    <Drawer title={staff.name} sub={`${staff.email} · ${staff.branch}`} onClose={onClose}
+      avatar={<div className="avatar lg">{initials(staff.name)}</div>}
+      badges={<>
+        <span className={"tag " + (suspended ? "archive" : "actif")}>{suspended ? "Suspendu" : "Actif"}</span>
+        <span className={"tag " + (staff.activated ? "actif" : "attente")}>{staff.activated ? "Activé" : "Non activé"}</span>
+      </>}
+      foot={dirty ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+          <span className="cell-sub" style={{ marginRight: "auto" }}>
+            {changed.length} modification{changed.length > 1 ? "s" : ""} non enregistrée{changed.length > 1 ? "s" : ""}
+          </span>
+          <button className="btn" onClick={discard} disabled={busy}>Annuler</button>
+          <button className="btn brand" type="submit" form="staff-edit" disabled={busy}>
+            {busy ? "Enregistrement…" : "Enregistrer"}
+          </button>
         </div>
-      </div>
-
+      ) : null}>
       {locked && (
         <div className="cell-sub" style={{ padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8 }}>
           C'est votre propre compte : un autre Admin IT doit modifier votre rôle ou votre statut.
         </div>
       )}
 
-      <div className="drawer-section">
-        <div className="card-title" style={{ marginBottom: 10 }}>Rôle</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <select className="input" value={draftRole} disabled={locked || busy}
-            onChange={e => setRoleDraft(e.target.value)}>
+      <form id="staff-edit" className="drawer-section" onSubmit={save}
+        style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="card-title">Informations</div>
+        <label className="field">
+          <span className="field-label">Nom complet</span>
+          <input className="input" required {...field("fullName")} />
+        </label>
+        <label className="field">
+          <span className="field-label">Email professionnel</span>
+          <input className="input" type="email" required {...field("email")} />
+        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <label className="field">
+            <span className="field-label">Téléphone</span>
+            <input className="input" type="tel" required placeholder="+226 …" {...field("phoneNumber")} />
+          </label>
+          <label className="field">
+            <span className="field-label">Agence</span>
+            <select className="input" required {...field("branchId")}>
+              {(branches ?? []).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <label className="field">
+          <span className="field-label">Rôle</span>
+          <select className="input" {...field("role")} disabled={locked || busy}>
             {!currentRole && <option value="">Aucun rôle</option>}
             {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
-          <button className="btn" disabled={locked || busy || !draftRole || draftRole === currentRole}
-            onClick={() => run(async () => { await setRole({ userId, role: draftRole }); setRoleDraft(null) })}>
-            Enregistrer
-          </button>
-        </div>
-      </div>
+        </label>
+        {contactChanged && (
+          <div className="cell-sub">
+            Le mot de passe ne change pas : la personne se connecte avec le nouvel email ou le nouveau numéro.
+            Sur l&apos;application, un nouveau numéro demande de choisir à nouveau le code PIN.
+          </div>
+        )}
+        {saved && !dirty && <div className="cell-sub" role="status">Modifications enregistrées.</div>}
+      </form>
 
       <div className="drawer-section">
         <div className="card-title" style={{ marginBottom: 10 }}>{reset ? "Mot de passe" : "Activation"}</div>
