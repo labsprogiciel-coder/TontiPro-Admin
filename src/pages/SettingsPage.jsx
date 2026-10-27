@@ -22,23 +22,23 @@ function SetCard({ title, sub, children }) {
 /** Labelled form field. */
 function Field({ label, sub, children }) {
   return (
-    <div className="field">
-      <label className="field-label">{label}{sub && <span className="cell-sub" style={{ fontWeight: 400, marginLeft: 6 }}>· {sub}</span>}</label>
+    <label className="field">
+      <span className="field-label">{label}{sub && <span className="cell-sub" style={{ fontWeight: 400, marginLeft: 6 }}>· {sub}</span>}</span>
       {children}
-    </div>
+    </label>
   )
 }
 
 /** Labelled on/off switch row. */
 function Toggle({ label, sub, value, onChange }) {
   return (
-    <div className="toggle-row" onClick={() => onChange(!value)}>
+    <button type="button" role="switch" aria-checked={value} className="toggle-row" onClick={() => onChange(!value)}>
       <div>
         <div style={{ fontWeight: 550, fontSize: 13 }}>{label}</div>
         {sub && <div className="cell-sub">{sub}</div>}
       </div>
       <span className={"switch " + (value ? "on" : "")}><span className="knob"/></span>
-    </div>
+    </button>
   )
 }
 
@@ -84,7 +84,7 @@ export default function SettingsPage() {
       <div className="settings-grid">
         <aside className="settings-nav">
           {sections.map(s => (
-            <button key={s.k} className={"settings-nav-item " + (section === s.k ? "on" : "")} onClick={() => setSection(s.k)}>
+            <button key={s.k} aria-pressed={section === s.k} className={"settings-nav-item " + (section === s.k ? "on" : "")} onClick={() => setSection(s.k)}>
               {s.icon}<span>{s.label}</span>
             </button>
           ))}
@@ -132,7 +132,7 @@ export default function SettingsPage() {
                         <td className="cell-sub" style={{ fontFamily: "var(--font-mono)" }}>{b.c}</td>
                         <td>{b.a}</td>
                         <td><span className="tag actif">Actif</span></td>
-                        <td><button className="btn ghost sm" style={{ padding: 4 }}><I.More size={14}/></button></td>
+                        <td><button className="btn ghost sm" style={{ padding: 4 }} aria-label={`Actions pour ${b.n}`}><I.More size={14}/></button></td>
                       </tr>
                     ))}
                   </tbody>

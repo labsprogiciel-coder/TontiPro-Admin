@@ -70,14 +70,25 @@ function AccessDenied() {
   )
 }
 
+const PAGE_TITLES = {
+  dashboard: "Tableau de bord", clients: "Clients", tx: "Transactions", agents: "Agents",
+  objectifs: "Objectifs", produits: "Produits", reconciliation: "Réconciliation", settings: "Paramètres",
+}
+
 function Shell({ can }) {
   const [active, setActive] = useState(() => landingPage(can))
   const Page = canOpenPage(active, can) ? (PAGES[active] ?? AccessDenied) : AccessDenied
 
+  // Each page has its own title, read out when the page changes
+  useEffect(() => {
+    document.title = `${PAGE_TITLES[active] ?? "Mizo"} — Mizo`
+  }, [active])
+
   return (
     <div className="app">
+      <a className="skip-link" href="#main">Aller au contenu</a>
       <Sidebar active={active} setActive={setActive} />
-      <main className="main">
+      <main className="main" id="main" tabIndex={-1}>
         <Page />
       </main>
     </div>

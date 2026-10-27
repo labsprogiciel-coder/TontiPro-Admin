@@ -198,7 +198,7 @@ function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
         </div>
         <div className="seg">
           {["24h","7j","30j","Tout"].map(p => (
-            <button key={p} className={period === p ? "on" : ""} onClick={() => setPeriod(p)}>{p}</button>
+            <button key={p} aria-pressed={period === p} className={period === p ? "on" : ""} onClick={() => setPeriod(p)}>{p}</button>
           ))}
         </div>
       </div>
@@ -245,18 +245,18 @@ function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
               { k: "ecarts",  label: "Écarts",   n: counts.ecarts  },
               { k: "signes",  label: "Signées",  n: counts.signes  },
             ].map(t => (
-              <button key={t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
+              <button key={t.k} aria-pressed={seg === t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
                 {t.label}<span className="seg-count">{t.n}</span>
               </button>
             ))}
           </div>
           <div className="filter-spacer"/>
-          <div className="filter-group">
-            <label className="filter-label">Agent</label>
+          <label className="filter-group">
+            <span className="filter-label">Agent</span>
             <select className="filter-select" value={agent} onChange={e => setAgent(e.target.value)}>
               {agents.map(a => <option key={a} value={a}>{a === "tous" ? "Tous" : a}</option>)}
             </select>
-          </div>
+          </label>
         </div>
 
         <div className="table-wrap">
@@ -309,7 +309,7 @@ function ReconciliationIndex({ records: RECON_RECORDS, onOpen }) {
                     </td>
                     <td><span className={meta.cls}><span className="rec-status-dot"/>{meta.label}</span></td>
                     <td>
-                      <button className="btn ghost sm" style={{ padding: 4 }}
+                      <button className="btn ghost sm" style={{ padding: 4 }} aria-label={`Ouvrir la réconciliation de ${r.agent} du ${r.date}`}
                         onClick={e => { e.stopPropagation(); onOpen(r.id) }}>
                         <I.Arrow size={12}/>
                       </button>
@@ -431,7 +431,7 @@ function ReconciliationDetail({ record, onBack, onDone }) {
           <div className={"recon-meta-v " + (variance.total === 0 ? "variance-zero" : variance.total > 0 ? "variance-pos" : "variance-neg")}
                style={{ fontVariantNumeric: "tabular-nums" }}>
             {variance.total === 0 ? "—" : (variance.total > 0 ? "+" : "−") + fmt(Math.abs(variance.total))}
-            {variance.total !== 0 && <span style={{ fontSize: 11, color: "currentColor", fontWeight: 500, opacity: 0.7 }}> FCFA</span>}
+            {variance.total !== 0 && <span style={{ fontSize: 11, color: "currentColor", fontWeight: 500 }}> FCFA</span>}
           </div>
         </div>
         <div>
@@ -486,9 +486,9 @@ function ReconciliationDetail({ record, onBack, onDone }) {
                       <td>
                         <div style={{ display: "flex", justifyContent: "center" }}>
                           <div className="denom-step">
-                            <button onClick={() => setDenom(key, n - 1)} disabled={isClosed}>−</button>
-                            <input type="text" value={n} onChange={e => setDenom(key, e.target.value)} disabled={isClosed}/>
-                            <button onClick={() => setDenom(key, n + 1)} disabled={isClosed}>+</button>
+                            <button onClick={() => setDenom(key, n - 1)} disabled={isClosed} aria-label={`Un ${d.kind} de ${fmt(d.v)} en moins`}>−</button>
+                            <input type="text" value={n} onChange={e => setDenom(key, e.target.value)} disabled={isClosed} aria-label={`Nombre de ${d.kind}s de ${fmt(d.v)}`} inputMode="numeric"/>
+                            <button onClick={() => setDenom(key, n + 1)} disabled={isClosed} aria-label={`Un ${d.kind} de ${fmt(d.v)} en plus`}>+</button>
                           </div>
                         </div>
                       </td>
@@ -590,7 +590,7 @@ function ReconciliationDetail({ record, onBack, onDone }) {
                 </>
               ) : (
                 <>
-                  {error && <span style={{ fontSize: 12, color: "var(--neg)" }}>{String(error)}</span>}
+                  {error && <span role="alert" style={{ fontSize: 12, color: "var(--neg)" }}>{String(error)}</span>}
                   <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
                     {canSettle ? (
                       <button className="btn brand" disabled={busy} onClick={onSettle}>
@@ -618,7 +618,8 @@ function LedgerLine({ color, glyph, name, sub, expected, value, onChange, disabl
   const delta = value - expected
   return (
     <div className="ledger-line">
-      <div className="ledger-icon" style={{ background: color }}>
+      {/* Channel brand mark (Orange Money, Moov…): the name follows as text */}
+      <div className="ledger-icon" style={{ background: color }} aria-hidden="true">
         {typeof glyph === "string"
           ? <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.02em" }}>{glyph}</span>
           : glyph}
@@ -631,7 +632,7 @@ function LedgerLine({ color, glyph, name, sub, expected, value, onChange, disabl
         <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 600, color: "var(--ink-4)" }}>Théorique</div>
         <div style={{ marginTop: 2 }}>{fmt(expected)}</div>
       </div>
-      <input className="ledger-input" type="text" value={fmt(value)}
+      <input className="ledger-input" type="text" inputMode="numeric" value={fmt(value)} aria-label={`${name} : montant compté`}
         onChange={e => { const n = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0; onChange(n) }}
         disabled={disabled}/>
       <div className={"ledger-delta " + (delta === 0 ? "" : delta > 0 ? "variance-pos" : "variance-neg")}>

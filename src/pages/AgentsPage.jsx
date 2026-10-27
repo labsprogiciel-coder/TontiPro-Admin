@@ -93,7 +93,7 @@ function PhoneCell({ t }) {
         )}
         {t.network && <span style={{ color: t.network === "none" ? "var(--neg)" : "var(--ink-2)" }}>{NETWORK_LABELS[t.network]}</span>}
         {t.pendingOps > 0 && (
-          <span style={{ color: "var(--warn)", fontWeight: 600 }} title="Opérations enregistrées sur le téléphone, pas encore reçues par le serveur">
+          <span style={{ color: "var(--warn-ink)", fontWeight: 600 }} title="Opérations enregistrées sur le téléphone, pas encore reçues par le serveur">
             {t.pendingOps} en attente
           </span>
         )}
@@ -343,18 +343,18 @@ export default function AgentsPage() {
       <div className="card" role="tabpanel">
         <div className="card-head">
           <div className="filter-spacer"/>
-          <div className="filter-group">
-            <label className="filter-label">Agence</label>
+          <label className="filter-group">
+            <span className="filter-label">Agence</span>
             <select className="filter-select" value={branch} onChange={e => setBranch(e.target.value)}>
               {branches.map(b => <option key={b} value={b}>{b === "toutes" ? "Toutes" : b}</option>)}
             </select>
-          </div>
-          <div className="filter-group">
-            <label className="filter-label">Rôle</label>
+          </label>
+          <label className="filter-group">
+            <span className="filter-label">Rôle</span>
             <select className="filter-select" value={role} onChange={e => setRole(e.target.value)}>
               {roles.map(r => <option key={r} value={r}>{r === "tous" ? "Tous" : r}</option>)}
             </select>
-          </div>
+          </label>
         </div>
 
         <div className="table-wrap">

@@ -2,12 +2,13 @@ import { useState, useMemo } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
-import { errorMessage, fmt, fmtDateTime, initials, relTime, KPI, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
+import { errorMessage, fmt, fmtDateTime, initials, pressable, relTime, KPI, KpiSkeleton, TableSkeleton, PageHeader, SearchInput } from '../components'
 import { Pager, usePaged } from '../components/Pager'
 import IdDocument from '../components/IdDocument'
 import ClientProfile from '../components/ClientProfile'
 import { ImportButton } from '../components/ImportDialog'
 import Novu from '../components/Inbox'
+import { useDialog } from '../components/useDialog'
 
 /**
  * The client's product: a picker of the active products offered in the
@@ -34,7 +35,7 @@ function ProductField({ client }) {
   }
   return (
     <>
-      <select className="filter-select" value={client.productId ?? ""} disabled={busy}
+      <select className="filter-select" aria-label="Produit" value={client.productId ?? ""} disabled={busy}
               onChange={e => change(e.target.value)}>
         <option value="">Aucun produit</option>
         {/* Keep showing a product that was archived since it was assigned */}
@@ -64,12 +65,13 @@ const ClientStatus = ({ status }) => {
  */
 function ClientDrawer({ client, onClose }) {
   const history = useQuery(api.admin.customerHistory, client ? { customerId: client.id } : "skip")
+  const ref = useDialog(onClose, !!client)
   if (!client) return null
   const since = new Date(client.joined).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
   return (
     <>
       <div className="drawer-scrim" onClick={onClose}/>
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label={`Client ${client.name}`}>
+      <aside className="drawer" role="dialog" aria-modal="true" aria-label={`Client ${client.name}`} ref={ref} tabIndex={-1}>
         <div className="drawer-head">
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             <div className="avatar lg">{initials(client.name)}</div>
@@ -175,13 +177,14 @@ export default function ClientsPage() {
     else { setSortBy(col); setSortDir("desc") }
   }
   const SortHead = ({ col, children, align }) => (
-    <th onClick={() => toggleSort(col)} style={{ textAlign: align || "left", cursor: "pointer", userSelect: "none" }}>
-      <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+    <th style={{ textAlign: align || "left" }}
+        aria-sort={sortBy === col ? (sortDir === "asc" ? "ascending" : "descending") : undefined}>
+      <button type="button" className="sort-btn" onClick={() => toggleSort(col)}>
         {children}
-        <span style={{ opacity: sortBy === col ? 1 : 0.25, fontSize: 9 }}>
+        <span aria-hidden="true" style={{ opacity: sortBy === col ? 1 : 0.25, fontSize: 9 }}>
           {sortBy === col ? (sortDir === "asc" ? "▲" : "▼") : "▾"}
         </span>
-      </span>
+      </button>
     </th>
   )
 
@@ -242,21 +245,21 @@ export default function ClientsPage() {
               { k: "attente", label: "En attente",  n: counts.attente },
               { k: "archive", label: "Archivés",    n: counts.archive },
             ].map(t => (
-              <button key={t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
+              <button key={t.k} aria-pressed={seg === t.k} className={"seg-tab " + (seg === t.k ? "on" : "")} onClick={() => setSeg(t.k)}>
                 {t.label}<span className="seg-count">{t.n}</span>
               </button>
             ))}
           </div>
           <div className="filter-spacer"/>
-          <div className="filter-group">
-            <label className="filter-label">Agent</label>
+          <label className="filter-group">
+            <span className="filter-label">Agent</span>
             <select className="filter-select" value={agent} onChange={e => setAgent(e.target.value)}>
               {agents.map(a => <option key={a} value={a}>{a === "tous" ? "Tous les agents" : a}</option>)}
             </select>
-          </div>
+          </label>
           <div className="seg">
-            <button className={view === "table" ? "on" : ""} onClick={() => setView("table")}>Tableau</button>
-            <button className={view === "cards" ? "on" : ""} onClick={() => setView("cards")}>Cartes</button>
+            <button aria-pressed={view === "table"} className={view === "table" ? "on" : ""} onClick={() => setView("table")}>Tableau</button>
+            <button aria-pressed={view === "cards"} className={view === "cards" ? "on" : ""} onClick={() => setView("cards")}>Cartes</button>
           </div>
         </div>
 
@@ -276,7 +279,7 @@ export default function ClientsPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ width: 36 }}><input type="checkbox" checked={allOn} onChange={toggleAll} /></th>
+                  <th style={{ width: 36 }}><input type="checkbox" checked={allOn} onChange={toggleAll} aria-label="Sélectionner tous les clients affichés" /></th>
                   <SortHead col="name">Client</SortHead>
                   <SortHead col="village">Village</SortHead>
                   <SortHead col="branch">Agence</SortHead>
@@ -292,7 +295,7 @@ export default function ClientsPage() {
                 {paged.rows.map(c => (
                   <tr key={c.id} onClick={() => setOpenClient(c)} className={selected.has(c.id) ? "selected" : ""}>
                     <td onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+                      <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} aria-label={`Sélectionner ${c.name}`} />
                     </td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -316,7 +319,7 @@ export default function ClientsPage() {
                     <td>
                       <ClientStatus status={c.status} />
                     </td>
-                    <td><button className="btn ghost sm" style={{ padding: 4 }} onClick={e => { e.stopPropagation(); setOpenClient(c) }}><I.Arrow size={12}/></button></td>
+                    <td><button className="btn ghost sm" style={{ padding: 4 }} aria-label={`Ouvrir la fiche de ${c.name}`} onClick={e => { e.stopPropagation(); setOpenClient(c) }}><I.Arrow size={12}/></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -332,7 +335,7 @@ export default function ClientsPage() {
         ) : (
           <div className="card-grid">
             {paged.rows.map(c => (
-              <div key={c.id} className="client-card" onClick={() => setOpenClient(c)}>
+              <div key={c.id} className="client-card" {...pressable(() => setOpenClient(c), `Ouvrir la fiche de ${c.name}`)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div className="avatar lg">{initials(c.name)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>

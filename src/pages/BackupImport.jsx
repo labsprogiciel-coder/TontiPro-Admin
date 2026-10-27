@@ -213,7 +213,7 @@ export default function BackupImport({ onBusy }) {
             </div>
           )}
           {run.error && (
-            <div style={{ color: "var(--neg)", fontSize: 13, marginTop: 10 }}>
+            <div role="alert" style={{ color: "var(--neg)", fontSize: 13, marginTop: 10 }}>
               Import interrompu : {run.error} Ce qui est déjà importé est enregistré ; relancez avec les mêmes fichiers pour continuer.
             </div>
           )}

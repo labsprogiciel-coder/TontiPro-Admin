@@ -3,6 +3,7 @@ import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { I } from '../icons'
 import { errorMessage, initials, Loading } from '../components'
+import { useDialog } from './useDialog'
 
 export const ROLE_OPTIONS = [
   { value: "field_agent", label: "Agent terrain" },
@@ -13,10 +14,11 @@ export const ROLE_OPTIONS = [
 
 /** Side drawer shell with title, scrim, optional avatar and badges next to the title, and optional footer. */
 function Drawer({ title, sub, onClose, children, foot, avatar, badges }) {
+  const ref = useDialog(onClose)
   return (
     <>
       <div className="drawer-scrim" onClick={onClose}/>
-      <aside className="drawer" role="dialog" aria-label={title}>
+      <aside className="drawer" role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
         <div className="drawer-head">
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             {avatar}
