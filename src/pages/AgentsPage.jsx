@@ -8,6 +8,7 @@ import Novu from '../components/Inbox'
 import { NewStaffDrawer, StaffDrawer } from '../components/StaffDrawers'
 import { ImportButton } from '../components/ImportDialog'
 import { DropdownMenu } from '../components/Menu'
+import { confirmDialog } from '../components/ConfirmDialog'
 
 const ROLE_TAGS = {
   "Admin IT":      { bg: "oklch(0.94 0.04 50)",  fg: "var(--brand-ink)" },
@@ -130,10 +131,14 @@ function FleetRow({ device, agents, canBind }) {
   }
 
   /** Ask for confirmation before removing one agent from the device. */
-  const onUnbind = (agent) => {
-    if (window.confirm(`Délier ${agent.name} de ${device.serial} ? Cet agent ne pourra plus encaisser avec ce TPE.`)) {
-      run(() => unbind({ serialNumber: device.serial, userId: agent.id }))
-    }
+  const onUnbind = async (agent) => {
+    const ok = await confirmDialog({
+      title: `Délier ${agent.name} de ${device.serial} ?`,
+      message: "Cet agent ne pourra plus encaisser avec ce TPE.",
+      confirmLabel: "Délier",
+      danger: true,
+    })
+    if (ok) run(() => unbind({ serialNumber: device.serial, userId: agent.id }))
   }
 
   const bound = device.agents ?? []

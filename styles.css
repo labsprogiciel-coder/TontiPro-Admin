@@ -1456,3 +1456,11 @@ label.filter-group { cursor: default; }
   background: var(--brand-strong); color: white; font-weight: 600; text-decoration: none;
 }
 .skip-link:focus { top: 12px; }
+
+/* === Confirmation dialog (replaces window.confirm) === */
+.modal.confirm { width: min(440px, 92vw); }
+.modal.confirm .modal-body { display: flex; flex-direction: column; gap: 10px; padding: 20px; }
+.confirm-message { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.btn.danger { background: var(--neg); border-color: var(--neg); color: white; }
+.btn.danger:hover { background: oklch(0.44 0.16 30); border-color: oklch(0.44 0.16 30); }

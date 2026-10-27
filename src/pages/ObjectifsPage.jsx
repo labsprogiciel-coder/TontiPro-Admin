@@ -6,6 +6,7 @@ import { downloadCsv, errorMessage, fmt, initials, SortHead, keyActivate, KPI, P
 import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 import { useDialog } from '../components/useDialog'
+import { confirmDialog } from '../components/ConfirmDialog'
 
 const OBJ_STATUSES = {
   atteint:   { label: "Atteint",       dot: "var(--pos)" },
@@ -133,7 +134,15 @@ function GoalEditor({ goal, candidates, onClose }) {
           <button className="btn" onClick={onClose}>Annuler</button>
           {!isNew && (
             <button className="btn ghost sm" style={{ marginLeft: "auto", color: "var(--neg)" }} disabled={busy}
-                    onClick={() => window.confirm(`Supprimer l'objectif de ${goal.client} ?`) && run(() => removeGoal({ customerId: goal.id }))}>
+                    onClick={async () => {
+                      const ok = await confirmDialog({
+                        title: `Supprimer l'objectif de ${goal.client} ?`,
+                        message: "L'épargne déjà versée reste sur le compte du client.",
+                        confirmLabel: "Supprimer",
+                        danger: true,
+                      })
+                      if (ok) run(() => removeGoal({ customerId: goal.id }))
+                    }}>
               Supprimer
             </button>
           )}

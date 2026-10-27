@@ -6,6 +6,7 @@ import { I } from '../icons'
 import { FIELDS, IMPORT_REASONS as REASONS, buildItems, downloadText, guessMapping, readRows, toCsv } from '../lib/sheet'
 import { Pager, usePaged } from '../components/Pager'
 import { WizardFoot, WizardSteps } from '../components/Wizard'
+import { confirmDialog } from '../components/ConfirmDialog'
 
 const BATCH = 200 // = IMPORT_BATCH_SIZE in convex/imports.ts
 const WIZARD = ["Fichiers", "Vérification", "Import"]
@@ -99,10 +100,12 @@ export default function BackupImport({ onBusy }) {
   }, [clients, txs])
 
   const start = async () => {
-    if (!txs && !window.confirm(
-      "Sans le fichier transactions, chaque Solde sera enregistré en une seule ligne d'ajustement, sans historique. " +
-      "Si vous importez l'historique plus tard, relancez la sauvegarde avec les deux fichiers pour corriger ces ajustements. Continuer ?",
-    )) return
+    if (!txs && !(await confirmDialog({
+      title: "Importer sans l'historique ?",
+      message: "Sans le fichier transactions, chaque Solde sera enregistré en une seule ligne d'ajustement, sans historique. " +
+        "Si vous importez l'historique plus tard, relancez la sauvegarde avec les deux fichiers pour corriger ces ajustements.",
+      confirmLabel: "Importer quand même",
+    }))) return
     const results = { clients: [], tx: [], align: [] }
     const local = (file) => (file ? file.items.filter((i) => i.error).map((i) => ({ row: i.row, status: "error", code: i.error })) : [])
     results.clients.push(...local(clients))
