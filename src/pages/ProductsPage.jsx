@@ -238,7 +238,7 @@ export default function ProductsPage() {
                       </td>
                       <td><span className={"tag " + sm.class}>{sm.label}</span></td>
                       <td>
-                        <button className="btn ghost sm" style={{ padding: 4 }} aria-label={`Modifier ${p.name}`}
+                        <button className="btn ghost sm" style={{ padding: 4 }} aria-label={`${canEdit ? "Modifier" : "Voir"} ${p.name}`}
                           onClick={e => { e.stopPropagation(); setEditor({ mode: "edit", product: p }) }}>
                           <I.Arrow size={12}/>
                         </button>
