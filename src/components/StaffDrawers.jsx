@@ -129,8 +129,10 @@ export function StaffDrawer({ userId, onClose }) {
   const values  = { ...initial, ...draft }
   const changed = Object.keys(draft).filter(k => draft[k] !== initial[k])
   const dirty   = changed.length > 0
+  // Locked while saving, so nothing typed meanwhile is lost when the draft clears
   const field   = (k) => ({
     value: values[k],
+    disabled: busy,
     onChange: (e) => { setSaved(false); setDraft(d => ({ ...d, [k]: e.target.value })) },
   })
   const suspended   = staff.status !== "active"
@@ -209,7 +211,7 @@ export function StaffDrawer({ userId, onClose }) {
         </div>
         <label className="field">
           <span className="field-label">Rôle</span>
-          <select className="input" disabled={locked} {...field("role")}>
+          <select className="input" {...field("role")} disabled={locked || busy}>
             {!currentRole && <option value="">Aucun rôle</option>}
             {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>

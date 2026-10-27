@@ -26,12 +26,18 @@ export function DropdownMenu({ label, items, disabled, align = "right", searchAb
     if (!open) return
     const b = buttonRef.current.getBoundingClientRect()
     const pop = popRef.current
-    const h = pop.offsetHeight
+    const h = pop.scrollHeight
     const w = pop.offsetWidth
-    const below = window.innerHeight - b.bottom
-    const top = below < h + 8 && b.top > below ? b.top - h - 4 : b.bottom + 4
+    const below = window.innerHeight - b.bottom - 12
+    const above = b.top - 12
+    // Below unless it doesn't fit and there's more room above; capped to the
+    // room on that side (the list scrolls), so it never leaves the window
+    const up = below < h && above > below
+    const maxHeight = Math.max(120, up ? above : below)
+    const height = Math.min(h, maxHeight)
+    const top = up ? b.top - height - 4 : b.bottom + 4
     const left = align === "right" ? Math.max(8, b.right - w) : Math.min(b.left, window.innerWidth - w - 8)
-    setPos({ top, left })
+    setPos({ top, left, maxHeight })
   }, [open, align, shown.length])
 
   useEffect(() => {
@@ -39,7 +45,11 @@ export function DropdownMenu({ label, items, disabled, align = "right", searchAb
     const onDown = (e) => {
       if (!popRef.current?.contains(e.target) && !buttonRef.current?.contains(e.target)) close()
     }
-    const onMove = () => close()
+    // Page scroll or resize moves the button away; scrolling the list doesn't
+    const onMove = (e) => {
+      if (e?.target instanceof Node && popRef.current?.contains(e.target)) return
+      close()
+    }
     document.addEventListener("mousedown", onDown)
     window.addEventListener("resize", onMove)
     window.addEventListener("scroll", onMove, true)
@@ -85,7 +95,7 @@ export function DropdownMenu({ label, items, disabled, align = "right", searchAb
       </button>
       {open && (
         <div ref={popRef} className="menu-pop" role="menu" onKeyDown={onKeyDown}
-          style={pos ? { top: pos.top, left: pos.left } : { visibility: "hidden", top: 0, left: 0 }}>
+          style={pos ? { top: pos.top, left: pos.left, maxHeight: pos.maxHeight } : { visibility: "hidden", top: 0, left: 0 }}>
           {actions.length > searchAbove && (
             <input className="menu-search" placeholder="Rechercher…" value={query}
               onChange={e => setQuery(e.target.value)} aria-label="Filtrer les actions" />

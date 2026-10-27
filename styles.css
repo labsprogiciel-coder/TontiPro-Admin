@@ -1381,8 +1381,10 @@ textarea.input { font-family: inherit; resize: vertical; min-height: 64px; }
   padding: 4px;
   text-align: left;
   white-space: normal;
+  display: flex;
+  flex-direction: column;
 }
-.menu-list { max-height: 280px; overflow-y: auto; }
+.menu-list { max-height: 280px; min-height: 0; overflow-y: auto; }
 .menu-search {
   width: 100%;
   box-sizing: border-box;
