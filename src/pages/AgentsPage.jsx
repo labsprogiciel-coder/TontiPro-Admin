@@ -7,6 +7,7 @@ import { Pager, usePaged } from '../components/Pager'
 import Novu from '../components/Inbox'
 import { NewStaffDrawer, StaffDrawer } from '../components/StaffDrawers'
 import { ImportButton } from '../components/ImportDialog'
+import { DropdownMenu } from '../components/Menu'
 
 const ROLE_TAGS = {
   "Admin IT":      { bg: "oklch(0.94 0.04 50)",  fg: "var(--brand-ink)" },
@@ -117,14 +118,13 @@ const MAX_AGENTS_PER_DEVICE = 6
 function FleetRow({ device, agents, canBind }) {
   const bind   = useMutation(api.devices.bindDevice)
   const unbind = useMutation(api.devices.unbindDevice)
-  const [userId, setUserId] = useState("")
   const [busy, setBusy]     = useState(false)
   const [error, setError]   = useState(null)
 
-  /** Run a binding operation, manage pending/error state, and clear selection on success. */
+  /** Run a binding operation and manage pending/error state. */
   const run = async (fn) => {
     setBusy(true); setError(null)
-    try { await fn(); setUserId("") }
+    try { await fn() }
     catch (e) { setError(errorMessage(e)) }
     finally { setBusy(false) }
   }
@@ -165,41 +165,37 @@ function FleetRow({ device, agents, canBind }) {
   } else if (device.status !== "active") assignee = <span className="cell-sub">Non affecté · appareil indisponible</span>
   else if (!pending) assignee = <span className="cell-sub">Non affecté</span>
 
-  // Délier: a button for a single agent, a picker when the TPE is shared
-  let unbindControl = null
-  if (canBind && bound.length === 1) {
-    unbindControl = <button className="btn sm" style={{ color: "var(--neg)" }} disabled={busy} onClick={() => onUnbind(bound[0])}>Délier</button>
-  } else if (canBind && bound.length > 1) {
-    unbindControl = (
-      <select className="filter-select" aria-label={`Délier un agent de ${device.serial}`} value="" disabled={busy}
-        style={{ color: "var(--neg)" }}
-        onChange={e => { const a = bound.find(x => x.id === e.target.value); if (a) onUnbind(a) }}>
-        <option value="">Délier un agent…</option>
-        {bound.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-      </select>
-    )
+  // One "Gérer" menu: link agents (or add one to a shared TPE), unlink one.
+  // A pending phone request keeps its own button, it's the expected action.
+  const menuItems = []
+  if (canBind && device.status === "active") {
+    if (full) {
+      menuItems.push({ header: `${MAX_AGENTS_PER_DEVICE} agents au maximum sur ce TPE` })
+    } else {
+      menuItems.push({ header: bound.length ? "Ajouter un agent" : "Lier à un agent" })
+      if (eligible.length === 0) menuItems.push({ label: "Aucun agent disponible", disabled: true, onSelect: () => {} })
+      for (const a of eligible) {
+        menuItems.push({ label: a.name, onSelect: () => run(() => bind({ serialNumber: device.serial, userId: a.id })) })
+      }
+    }
+  }
+  if (canBind && bound.length) {
+    if (menuItems.length) menuItems.push({ separator: true })
+    menuItems.push({ header: "Délier" })
+    for (const a of bound) menuItems.push({ label: a.name, danger: true, onSelect: () => onUnbind(a) })
   }
 
   let actions = null
-  if (canBind) {
-    if (requester) {
-      actions = (
+  if (canBind && (requester || menuItems.length)) {
+    actions = <>
+      {requester && (
         <button className="btn brand sm" disabled={busy}
           onClick={() => run(() => bind({ serialNumber: device.serial, userId: requester.id }))}>Lier à {requester.name}</button>
-      )
-    } else if (device.status === "active" && !full) {
-      actions = <>
-        <select className="filter-select" aria-label={`Agent pour ${device.serial}`} value={userId}
-          onChange={e => setUserId(e.target.value)} disabled={busy}>
-          <option value="">{eligible.length ? (bound.length ? "Ajouter un agent…" : "Choisir un agent…") : "Aucun agent disponible"}</option>
-          {eligible.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
-        <button className="btn sm" disabled={busy || !userId}
-          onClick={() => run(() => bind({ serialNumber: device.serial, userId }))}>{bound.length ? "Ajouter" : "Lier"}</button>
-      </>
-    } else if (full) {
-      actions = <span className="cell-sub">{MAX_AGENTS_PER_DEVICE} agents au maximum</span>
-    }
+      )}
+      {menuItems.length > 0 && (
+        <DropdownMenu label="Gérer" items={menuItems} disabled={busy} ariaLabel={`Gérer les agents de ${device.serial}`} />
+      )}
+    </>
   }
 
   return (
@@ -233,10 +229,7 @@ function FleetRow({ device, agents, canBind }) {
       <td><AlertsCell d={device}/></td>
       <td className="cell-sub">{relTime(device.lastSync)}</td>
       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-        <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-          {actions && <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{actions}</div>}
-          {unbindControl}
-        </div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{actions}</div>
         {error && <div role="alert" style={{ color: "var(--neg)", fontSize: 11.5, marginTop: 4 }}>{String(error)}</div>}
       </td>
     </tr>
